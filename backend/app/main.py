@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+from fastapi.middleware.cors import CORSMiddleware
 
 from ingestion.rag_service import ask_sentinel
 
@@ -10,13 +11,23 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 from typing import Any
 
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=3)
     top_k: int = Field(default=5, ge=1, le=15)
-    
+
 class SourceItem(BaseModel):
     id: str
     path: str | None = None
@@ -33,6 +44,15 @@ class QueryResponse(BaseModel):
     top_k: int
     model: str
 
+@app.get("/")
+def root():
+    return {
+        "service": "Sentinel API",
+        "status": "running",
+        "docs": "/docs",
+        "health": "/health",
+        "query": "/query",
+    }
 
 @app.get("/health")
 def health():
