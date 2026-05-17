@@ -80,7 +80,7 @@ def generate_text(prompt: str) -> str:
     with torch.no_grad():
         output = model.generate(
             **inputs,
-            max_new_tokens=500,
+            max_new_tokens=220,
             do_sample=False,
         )
 
