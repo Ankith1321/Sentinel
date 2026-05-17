@@ -80,7 +80,12 @@ export default function Home() {
            disabled={loading || question.trim().length < 3}
            className="mt-4 cursor-pointer rounded-xl bg-white px-5 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
          >
-           {loading ? "Thinking..." : "Ask Sentinel"}
+           {loading ? "Searching Superset and generating answer..." : "Ask Sentinel"}
+           {loading && (
+  <p className="mt-3 text-sm text-zinc-400">
+    Sentinel is retrieving relevant Superset code/docs and generating a grounded answer.
+  </p>
+)}
          </button>
         </div>
 

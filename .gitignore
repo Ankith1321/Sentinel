@@ -1,11 +1,7 @@
 .venv/
+node_modules/
+workspace/superset/
+frontend/.next/
+frontend/node_modules/
 __pycache__/
 *.pyc
-
-workspace/superset/
-
-data/indexes/
-data/processed/chunks.jsonl
-
-.env
-.DS_Store
