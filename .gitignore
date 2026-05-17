@@ -1,9 +1,11 @@
-# Python venv
 .venv/
-
-# VS Code settings
-.vscode/
-
-# Python cache
 __pycache__/
 *.pyc
+
+workspace/superset/
+
+data/indexes/
+data/processed/chunks.jsonl
+
+.env
+.DS_Store
