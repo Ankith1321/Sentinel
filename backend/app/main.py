@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
+from ingestion.retriever import retrieve    
 
 from ingestion.rag_service import ask_sentinel
 
@@ -69,4 +70,23 @@ def query(request: QueryRequest):
         top_k=request.top_k,
     )
 
+@app.post("/search")
+def search(request: QueryRequest):
+    results = retrieve(request.question, top_k=request.top_k)
+
+    return {
+        "question": request.question,
+        "top_k": request.top_k,
+        "results": [
+            {
+                "id": f"S{i}",
+                "path": item["metadata"].get("path"),
+                "language": item["metadata"].get("language"),
+                "title": item["metadata"].get("title"),
+                "distance": item.get("distance"),
+                "preview": item["content"][:800],
+            }
+            for i, item in enumerate(results, start=1)
+        ],
+    }
     return result
