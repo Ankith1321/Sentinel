@@ -23,8 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from typing import Any
-
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=3)
     top_k: int = Field(default=5, ge=1, le=15)
@@ -69,6 +67,7 @@ def query(request: QueryRequest):
         question=request.question,
         top_k=request.top_k,
     )
+    return result
 
 @app.post("/search")
 def search(request: QueryRequest):
@@ -89,4 +88,3 @@ def search(request: QueryRequest):
             for i, item in enumerate(results, start=1)
         ],
     }
-    return result
