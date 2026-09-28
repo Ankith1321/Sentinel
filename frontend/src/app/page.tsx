@@ -31,7 +31,7 @@ export default function Home() {
     setResult(null);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/query", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -73,10 +73,7 @@ export default function Home() {
 
           <button
            type="button"
-           onClick={() => {
-             console.log("Ask button clicked");
-             askSentinel();
-           }}
+           onClick={askSentinel}
            disabled={loading || question.trim().length < 3}
            className="mt-4 cursor-pointer rounded-xl bg-white px-5 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
          >
@@ -88,6 +85,12 @@ export default function Home() {
 )}
          </button>
         </div>
+
+        {error && (
+          <div className="mt-6 rounded-2xl border border-red-900 bg-red-950/40 p-4 text-sm text-red-300">
+            {error}
+          </div>
+        )}
 
         {result && (
           <div className="mt-8 space-y-6">
