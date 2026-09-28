@@ -18,7 +18,11 @@ def load_llm():
 
     _tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 
-    _model = AutoModelForCausalLM.from_pretrained(MODEL_ID,)
+    _model = AutoModelForCausalLM.from_pretrained(
+        MODEL_ID,
+        dtype=torch.float16,
+        device_map="auto",
+    )
 
     return _tokenizer, _model
 
