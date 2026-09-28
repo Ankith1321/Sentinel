@@ -1,0 +1,25 @@
+# Run: copy .env.example to .env at the project root first, then
+#   docker compose -f docker/docker-compose.yml up --build
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    ports:
+      - "7860:7860"
+    env_file:
+      - ../.env
+    volumes:
+      - ../data:/app/data
+    restart: unless-stopped
+
+  # frontend:
+  #   No frontend Dockerfile yet — see docs/SENIOR_REVIEW.md item 6.
+  #   build:
+  #     context: ../frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://localhost:7860
+  #   depends_on:
+  #     - backend
