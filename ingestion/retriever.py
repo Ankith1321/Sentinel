@@ -6,6 +6,17 @@ CHROMA_PATH = "data/indexes/chroma"
 COLLECTION_NAME = "superset_codebase"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
+_model = None
+
+
+def get_model() -> SentenceTransformer:
+    global _model
+
+    if _model is None:
+        _model = SentenceTransformer(EMBEDDING_MODEL)
+
+    return _model
+
 
 def get_collection():
     client = chromadb.PersistentClient(path=CHROMA_PATH)
@@ -13,7 +24,7 @@ def get_collection():
 
 
 def retrieve(query: str, top_k: int = 5):
-    model = SentenceTransformer(EMBEDDING_MODEL)
+    model = get_model()
     collection = get_collection()
 
     query_embedding = model.encode(
