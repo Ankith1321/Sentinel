@@ -4,7 +4,7 @@ An internal engineering knowledge assistant: ask natural-language questions over
 
 ## Status
 
-End to end and tested: chunk → embed → hybrid retrieval → LLM answer with citations → streaming API → chat UI, with sessions, uploads, feedback and API-key auth. Retrieval quality is measured on a fixed 40-question eval set (see [Evaluation](#evaluation)).
+End to end and tested: chunk → embed → hybrid retrieval → LLM answer with citations → streaming API → chat UI, with sessions, uploads, feedback and API-key auth. Retrieval quality is measured on a fixed 40-question eval set (see [Evaluation](#evaluation)): the top-5 results contain the right file 67.5% of the time, up from 40% before the chunking and hybrid-search work (full table in `docs/01_PRD.md`).
 
 ## How it works
 

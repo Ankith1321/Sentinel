@@ -30,32 +30,47 @@ Engineers working in a large, mixed-language codebase lose real time answering q
 
 ## 5. Success metrics
 
-These need to be measured against a real eval set, not asserted. No eval set exists yet — building one is the single highest-priority item that isn't already done, because every quality claim elsewhere in this project (chunking is better, hybrid search improved retrieval, etc.) is currently unfalsifiable without it.
+These are measured against a real eval set (`eval/qa_set.json`, 40 questions with expected source files), not asserted. Run it with `python -m eval.run_eval`.
 
-Targets below are provisional. Replace them with firm numbers once the baseline eval run exists; a target set before any measurement is a guess.
+Retrieval results, measured 2026-10-18 on the Superset checkout (88,144 chunks). One question is 2.5 points, so differences of one question are within noise.
 
-- **Retrieval hit-rate (hit@5):** % of a fixed 30-40 question eval set where the correct source file appears in the top-5 retrieved chunks. Provisional target: ≥ 70% after Phase 3, and never lower than the Phase 1 baseline.
-- **Groundedness:** % of answer sentences that are actually supported by their cited source — checked manually against the eval set until an automated grounding check exists. Provisional target: ≥ 90%.
-- **p95 end-to-end latency** for `/query`. Provisional target: under 10 seconds on the API-based LLM path. The local-model path is exempt (see `02_TRD.md` section 4).
-- **Uncited factual claims:** target is zero. The prompt asks for `[S1]`-style citations on every claim, but a 1.5B local model does not reliably comply, so this is requested, not enforced, and has not been measured yet.
+| Setup | hit@1 | hit@5 | hit@10 | MRR |
+|---|---|---|---|---|
+| Baseline: 80-line windows, MiniLM, vector | 17.5% | 40.0% | 50.0% | 0.267 |
+| AST chunks, MiniLM, vector | 27.5% | 50.0% | 57.5% | 0.347 |
+| AST chunks, MiniLM, hybrid | 30.0% | 65.0% | 65.0% | 0.434 |
+| + test-file demotion | 37.5% | 67.5% | 67.5% | 0.486 |
+| AST chunks, bge-small, vector | 37.5% | **70.0%** | 77.5% | 0.492 |
+| **AST chunks, bge-small, hybrid (default)** | 37.5% | 67.5% | 77.5% | **0.506** |
+
+Tried and rejected: the generic MS MARCO cross-encoder (lowered or did not change hit@5 in every comparison), a BGE query prefix (vector hit@5 70% to 60%), and 400-token chunks (hybrid MRR 0.453).
+
+Where it still fails: 13 of 40 questions miss the top 5, mostly broad "how does X work" code questions where related files (for example the MCP service layer or API schemas) outrank the implementing file.
+
+Targets below are provisional until there is more than one measurement per metric.
+
+- **Retrieval hit-rate (hit@5):** % of a fixed 30-40 question eval set where the correct source file appears in the top-5 retrieved chunks. Provisional target: ≥ 70%. **Current: 67.5% (default hybrid), 70.0% with plain vector search. Baseline was 40%.**
+- **Groundedness:** % of answer sentences that are actually supported by their cited source — checked manually against the eval set until an automated grounding check exists. Provisional target: ≥ 90%. **Not measured yet.**
+- **p95 end-to-end latency** for `/query`. Provisional target: under 10 seconds on the API-based LLM path. The local-model path is exempt (see `02_TRD.md` section 4). **Current: one logged query on the local model with a GPU took 3.4 s end to end; the Anthropic path has not been measured because no API key was available.**
+- **Uncited factual claims:** target is zero. The prompt asks for `[S1]`-style citations on every claim, but a 1.5B local model does not reliably comply, so this is requested, not enforced, and has not been measured. In manual checks the local model often skipped citations and once listed irrelevant files.
 
 ## 6. Must-have vs. nice-to-have
 
 **Must-have (blocks calling this v1-complete):**
 - `/query` returns a correct, cited answer over HTTP — **done**, fixed and verified live.
 - Retrieval doesn't reload the embedding model per call — **done**.
-- Incremental ingestion: a changed or new file updates the index without duplicating existing entries — **not done** (Implementation Plan Phase 4).
-- An eval set exists and has been run at least once, producing a real number — **not done** (Implementation Plan Phase 1.5, the next item to build).
-- Basic auth on anything reachable outside localhost — **not done** (Phase 7).
+- Incremental ingestion: a changed or new file updates the index without duplicating existing entries — **done** for uploads and for re-running the bulk build (stable path-derived ids, content hashing for uploads, old chunks deleted before re-indexing).
+- An eval set exists and has been run at least once, producing a real number — **done**, see the results table in section 5.
+- Basic auth on anything reachable outside localhost — **done**: `X-API-Key` on every route except `/health`, keys stored hashed.
 
 **Should-have:**
-- Hybrid retrieval, vector + BM25 (Phase 3).
-- AST-aware chunking for Python (Phase 2).
-- Streaming responses (Phase 5).
+- Hybrid retrieval, vector + BM25 — **done** (Phase 3).
+- AST-aware chunking for Python — **done** (Phase 2).
+- Streaming responses — **done** (Phase 5).
 
 **Could-have:**
-- Multi-turn conversation memory (Phase 6).
-- Drag-and-drop file upload UI (Phase 8).
+- Multi-turn conversation memory — **done** (Phase 6).
+- Drag-and-drop file upload UI — **done** (Phase 8).
 - A small PyTorch classifier routing "code" vs. "docs" queries — explicitly the lowest-priority, do-last item; a legitimate PyTorch rep but not load-bearing for the product.
 
 ## 7. Key user stories
