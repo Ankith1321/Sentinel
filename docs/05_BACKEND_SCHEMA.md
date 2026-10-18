@@ -1,17 +1,18 @@
 # Backend Schema
 
 **Project:** Sentinel
-**Status:** Design doc for a schema that does not exist in code yet — written ahead of Phase 4/6 implementation so those phases aren't improvised
+**Status:** Implemented in `backend/app/db.py` (SQLite, `data/sentinel.db`) and used through `backend/app/store.py`. The `documents` table is populated by uploads; the bulk Superset index is tracked in ChromaDB only, so `GET /documents` lists uploaded files.
 **Related:** [`02_TRD.md`](02_TRD.md) · [`06_IMPLEMENTATION_PLAN.md`](06_IMPLEMENTATION_PLAN.md)
 
 ## 1. Current state
 
-There is no relational database today. Storage is split across two places:
+Storage is split across three places:
 
-- `data/processed/chunks.jsonl` — flat file, one JSON object per chunk.
+- `data/processed/chunks.jsonl` — flat file, one JSON object per chunk (rebuildable).
 - ChromaDB (`data/indexes/chroma/`) — vector store, which also holds each chunk's `content` and `metadata` (`source_id`, `path`, `language`, `title`, `chunk_index`).
+- SQLite (`data/sentinel.db`) — everything relational, described below.
 
-This is sufficient for a stateless, single-corpus, single-user demo. It is not sufficient for two things already committed on the roadmap: Phase 4 needs to know what's already indexed and its content hash to do incremental ingestion correctly, and Phase 6 needs sessions and message history, which is inherently relational data, not vector data.
+The split exists because upload tracking needs content hashes, and sessions and message history are relational data, not vector data.
 
 ## 2. Decision
 
@@ -88,7 +89,8 @@ Phase 4 — one row per background upload, so `POST /documents/upload` can retur
 CREATE TABLE jobs (
     id          TEXT PRIMARY KEY,
     document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
-    status      TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'done', 'failed')),
+    filename    TEXT NOT NULL,
+    status      TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'done', 'unchanged', 'failed')),
     error       TEXT,
     created_at  TEXT NOT NULL,
     finished_at TEXT
