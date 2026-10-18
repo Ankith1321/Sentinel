@@ -9,7 +9,15 @@ import chromadb
 from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
-from ingestion.config import CHROMA_PATH, COLLECTION_NAME, EMBEDDING_MODEL, RERANK_MODEL, RETRIEVAL_MODE
+from ingestion.config import (
+    CHROMA_PATH,
+    COLLECTION_NAME,
+    EMBEDDING_MODEL,
+    QUERY_PREFIX,
+    RERANK_MODEL,
+    RETRIEVAL_MODE,
+    TEST_PATH_PENALTY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +27,9 @@ RRF_K = 60
 MIN_CANDIDATE_POOL = 20
 PATH_FILTER_OVERFETCH = 8
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+")
+TEST_PATH_MARKERS = (
+    "/tests/", "/test_", "_test.", "_tests.", ".test.", ".spec.", "/spec/", "__tests__", ".stories.",
+)
 CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 
@@ -95,7 +106,7 @@ def passes_filters(metadata: dict, language: str | None, path_prefix: str | None
 
 
 def vector_search(query: str, limit: int, language: str | None, path_prefix: str | None) -> list[dict]:
-    embedding = get_model().encode([query], normalize_embeddings=True)[0].tolist()
+    embedding = get_model().encode([QUERY_PREFIX + query], normalize_embeddings=True)[0].tolist()
     fetch = limit * PATH_FILTER_OVERFETCH if path_prefix else limit
 
     results = get_collection().query(
@@ -153,6 +164,23 @@ def reciprocal_rank_fusion(rankings: list[list[dict]]) -> list[dict]:
     return [{**by_id[i], "fusion_score": fused[i]} for i in ordered]
 
 
+def is_test_path(path: str) -> bool:
+    lowered = f"/{path.lower()}"
+    return any(marker in lowered for marker in TEST_PATH_MARKERS)
+
+
+def demote_test_files(query: str, hits: list[dict]) -> list[dict]:
+    if TEST_PATH_PENALTY >= 1.0 or "test" in query.lower():
+        return hits
+
+    factor = {True: TEST_PATH_PENALTY, False: 1.0}
+    adjusted = [
+        {**h, "fusion_score": h["fusion_score"] * factor[is_test_path(h["metadata"].get("path", ""))]}
+        for h in hits
+    ]
+    return sorted(adjusted, key=lambda h: h["fusion_score"], reverse=True)
+
+
 def rerank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
     if not candidates:
         return []
@@ -178,11 +206,14 @@ def retrieve(
     elif mode == "keyword":
         results = keyword_search(query, top_k, language, path_prefix)
     else:
-        fused = reciprocal_rank_fusion(
-            [
-                vector_search(query, pool, language, path_prefix),
-                keyword_search(query, pool, language, path_prefix),
-            ]
+        fused = demote_test_files(
+            query,
+            reciprocal_rank_fusion(
+                [
+                    vector_search(query, pool, language, path_prefix),
+                    keyword_search(query, pool, language, path_prefix),
+                ]
+            ),
         )
         results = rerank(query, fused[:pool], top_k) if mode == "hybrid_rerank" else fused[:top_k]
 

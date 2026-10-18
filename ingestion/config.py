@@ -14,13 +14,15 @@ COLLECTION_NAME = os.getenv("SENTINEL_COLLECTION", DEFAULT_COLLECTION)
 
 CHROMA_PATH = str(PROJECT_ROOT / "data" / "indexes" / "chroma")
 DB_PATH = Path(os.getenv("SENTINEL_DB_PATH", PROJECT_ROOT / "data" / "sentinel.db"))
-PROCESSED_DIR =PROJECT_ROOT / "data" / "processed"
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 CHUNKS_PATH = PROCESSED_DIR / (
     "chunks.jsonl" if COLLECTION_NAME == DEFAULT_COLLECTION else f"chunks_{COLLECTION_NAME}.jsonl"
 )
 
 EMBEDDING_MODEL = os.getenv("SENTINEL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
+QUERY_PREFIX = os.getenv("SENTINEL_QUERY_PREFIX", "")
+TEST_PATH_PENALTY = float(os.getenv("SENTINEL_TEST_PATH_PENALTY", "0.6"))
 RERANK_MODEL = os.getenv("SENTINEL_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 RETRIEVAL_MODE = os.getenv("SENTINEL_RETRIEVAL_MODE", "vector")
 
