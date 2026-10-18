@@ -1,0 +1,13 @@
+.venv
+.git
+.claude
+_to_delete
+workspace
+data
+eval/results
+frontend
+docs
+tests
+__pycache__
+*.pyc
+.env

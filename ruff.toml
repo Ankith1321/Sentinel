@@ -1,0 +1,10 @@
+line-length = 120
+target-version = "py310"
+extend-exclude = ["workspace", "frontend", "_to_delete"]
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[lint.per-file-ignores]
+"backend/app/main.py" = ["B008"]
+"backend/app/auth.py" = ["B008"]

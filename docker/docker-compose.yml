@@ -1,5 +1,6 @@
-# Run: copy .env.example to .env at the project root first, then
+# Run: copy .env.example to .env at the project root, set SENTINEL_API_KEY, then
 #   docker compose -f docker/docker-compose.yml up --build
+# The vector index lives in ../data (built with the ingestion scripts, or mounted from a build step).
 services:
   backend:
     build:
@@ -9,17 +10,20 @@ services:
       - "7860:7860"
     env_file:
       - ../.env
+    environment:
+      - SENTINEL_CORS_ORIGINS=http://localhost:3000
     volumes:
       - ../data:/app/data
     restart: unless-stopped
 
-  # frontend:
-  #   No frontend Dockerfile yet — see docs/SENIOR_REVIEW.md item 6.
-  #   build:
-  #     context: ../frontend
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - NEXT_PUBLIC_API_URL=http://localhost:7860
-  #   depends_on:
-  #     - backend
+  frontend:
+    build:
+      context: ../frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - SENTINEL_API_URL=http://backend:7860
+      - SENTINEL_API_KEY=${SENTINEL_API_KEY}
+    depends_on:
+      - backend
+    restart: unless-stopped
