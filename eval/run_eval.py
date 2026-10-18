@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ingestion.config import COLLECTION_NAME, EMBEDDING_MODEL, PROJECT_ROOT, SUPERSET_REPO
+from ingestion.config import COLLECTION_NAME, EMBEDDING_MODEL, PROJECT_ROOT, RETRIEVAL_MODE, SUPERSET_REPO
 from ingestion.retriever import retrieve
 
 QA_SET_PATH = PROJECT_ROOT / "eval" / "qa_set.json"
@@ -121,7 +121,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Score Sentinel retrieval against eval/qa_set.json")
     parser.add_argument("--validate", action="store_true", help="only check expected files exist")
     parser.add_argument("--label", default="baseline", help="name stored in the result file")
-    parser.add_argument("--mode", default="vector", choices=["vector", "keyword", "hybrid", "hybrid_rerank"])
+    parser.add_argument("--mode", default=None, choices=["vector", "keyword", "hybrid", "hybrid_rerank"])
     parser.add_argument("--depth", type=int, default=max(CUTOFFS), help="chunks to retrieve per question")
     args = parser.parse_args()
 
@@ -140,7 +140,11 @@ def main() -> int:
         return 0
 
     report = score(qa_set, retrieve, args.depth, args.mode)
-    report["config"] = {"mode": args.mode, "collection": COLLECTION_NAME, "embedding_model": EMBEDDING_MODEL}
+    report["config"] = {
+        "mode": args.mode or RETRIEVAL_MODE,
+        "collection": COLLECTION_NAME,
+        "embedding_model": EMBEDDING_MODEL,
+    }
     log_report(report)
     logger.info("saved %s", save_report(report, args.label))
     return 0

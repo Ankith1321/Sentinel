@@ -19,15 +19,16 @@ CHUNKS_PATH = PROCESSED_DIR / (
     "chunks.jsonl" if COLLECTION_NAME == DEFAULT_COLLECTION else f"chunks_{COLLECTION_NAME}.jsonl"
 )
 
-EMBEDDING_MODEL = os.getenv("SENTINEL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+EMBEDDING_MODEL = os.getenv("SENTINEL_EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 
 QUERY_PREFIX = os.getenv("SENTINEL_QUERY_PREFIX", "")
 TEST_PATH_PENALTY = float(os.getenv("SENTINEL_TEST_PATH_PENALTY", "0.6"))
 RERANK_MODEL = os.getenv("SENTINEL_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
-RETRIEVAL_MODE = os.getenv("SENTINEL_RETRIEVAL_MODE", "vector")
+RETRIEVAL_MODE = os.getenv("SENTINEL_RETRIEVAL_MODE", "hybrid")
 
-# The embedder silently truncates input past its window (256 tokens for MiniLM),
-# so chunks must fit inside it or their tails are never searchable.
+# The embedder silently truncates input past its window, so chunks must fit inside it or their
+# tails are never searchable. bge-small has a 512-token window, but 200-token chunks scored best
+# (hybrid MRR 0.506 vs 0.453 at 400); MiniLM, with its 256-token window, needs <= 240 anyway.
 CHUNK_TARGET_TOKENS = int(os.getenv("SENTINEL_CHUNK_TARGET_TOKENS", "200"))
 CHUNK_MAX_TOKENS = int(os.getenv("SENTINEL_CHUNK_MAX_TOKENS", "240"))
 CHUNK_MIN_TOKENS = 20
