@@ -97,6 +97,24 @@ CREATE TABLE jobs (
 );
 ```
 
+### `query_log`
+
+Phase 9 — one row per answered question, so latency, volume and retrieval behaviour can be inspected after the fact. Read through `GET /admin/stats` (query count, average and p95 latency, thumbs-up ratio, queries per day).
+
+```sql
+CREATE TABLE query_log (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id          TEXT,
+    question            TEXT NOT NULL,
+    standalone_question TEXT NOT NULL,    -- after follow-up rewriting
+    retrieved_ids       TEXT NOT NULL,    -- JSON array of Chroma chunk ids
+    retrieval_ms        INTEGER NOT NULL,
+    generation_ms       INTEGER NOT NULL,
+    model               TEXT NOT NULL,
+    created_at          TEXT NOT NULL
+);
+```
+
 ### `api_keys`
 
 Phase 7.

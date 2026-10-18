@@ -144,6 +144,29 @@ def test_stream_emits_sse_events_and_persists_the_turn(client):
     assert len(client.get(f"/sessions/{session_id}", headers=ADMIN).json()["messages"]) == 2
 
 
+def test_stats_report_logged_queries_and_feedback(client):
+    session_id = new_session(client)
+    client.post("/query", json={"question": "how are cache keys built?", "session_id": session_id}, headers=ADMIN)
+    client.post("/query", json={"question": "and where is it used?"}, headers=ADMIN)
+    message_id = client.get(f"/sessions/{session_id}", headers=ADMIN).json()["messages"][-1]["id"]
+    client.post(f"/messages/{message_id}/feedback", json={"rating": 1}, headers=ADMIN)
+
+    stats = client.get("/admin/stats", headers=ADMIN).json()
+
+    assert stats["queries"] >= 2
+    assert 5 <= stats["avg_retrieval_ms"] <= 12 and 6 <= stats["avg_generation_ms"] <= 34
+    assert stats["p95_total_ms"] >= 11
+    assert stats["feedback_up"] >= 1 and stats["feedback_positive_ratio"] is not None
+    assert stats["queries_per_day"][0]["queries"] >= 2
+
+
+def test_stats_are_admin_only(client):
+    created = client.post("/admin/keys", json={"label": "user"}, headers=ADMIN).json()
+
+    assert client.get("/admin/stats", headers={"X-API-Key": created["key"]}).status_code == 401
+    assert client.get("/admin/stats").status_code == 401
+
+
 def test_api_keys_can_be_created_used_and_revoked(client):
     created = client.post("/admin/keys", json={"label": "ci"}, headers=ADMIN).json()
     user_headers = {"X-API-Key": created["key"]}

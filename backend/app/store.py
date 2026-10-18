@@ -152,6 +152,56 @@ def add_feedback(message_id: int, rating: int) -> None:
         )
 
 
+def add_query_log(
+    session_id: str | None,
+    question: str,
+    standalone_question: str,
+    retrieved_ids: list[str],
+    retrieval_ms: int,
+    generation_ms: int,
+    model: str,
+) -> None:
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO query_log
+                (session_id, question, standalone_question, retrieved_ids,
+                 retrieval_ms, generation_ms, model, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, question, standalone_question, json.dumps(retrieved_ids),
+             retrieval_ms, generation_ms, model, utc_now()),
+        )
+
+
+def query_stats() -> dict:
+    with connect() as db:
+        totals = [
+            row[0]
+            for row in db.execute("SELECT retrieval_ms + generation_ms FROM query_log ORDER BY 1").fetchall()
+        ]
+        averages = db.execute("SELECT AVG(retrieval_ms), AVG(generation_ms) FROM query_log").fetchone()
+        ratings = db.execute(
+            "SELECT COALESCE(SUM(rating = 1), 0), COALESCE(SUM(rating = -1), 0) FROM feedback"
+        ).fetchone()
+        per_day = db.execute(
+            "SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS queries FROM query_log "
+            "GROUP BY day ORDER BY day DESC LIMIT 14"
+        ).fetchall()
+
+    rated = ratings[0] + ratings[1]
+    return {
+        "queries": len(totals),
+        "avg_retrieval_ms": round(averages[0] or 0),
+        "avg_generation_ms": round(averages[1] or 0),
+        "p95_total_ms": totals[min(len(totals) - 1, int(len(totals) * 0.95))] if totals else 0,
+        "feedback_up": ratings[0],
+        "feedback_down": ratings[1],
+        "feedback_positive_ratio": round(ratings[0] / rated, 3) if rated else None,
+        "queries_per_day": [{"day": r["day"], "queries": r["queries"]} for r in per_day],
+    }
+
+
 def create_api_key(label: str | None) -> tuple[str, str]:
     key_id = uuid4().hex
     raw_key = f"snt_{secrets.token_urlsafe(32)}"

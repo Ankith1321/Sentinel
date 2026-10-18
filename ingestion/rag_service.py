@@ -169,6 +169,7 @@ def ask_sentinel(
         "model": provider.model,
         "retrieval_ms": round(prepared["retrieval_ms"]),
         "generation_ms": round(generation_ms),
+        "retrieved_ids": [c["id"] for c in prepared["contexts"]],
     }
 
 
@@ -200,4 +201,6 @@ def stream_sentinel(
         "model": provider.model,
         "retrieval_ms": round(prepared["retrieval_ms"]),
         "generation_ms": round(generation_ms),
+        "retrieved_ids": [c["id"] for c in prepared["contexts"]],
+        "standalone_question": prepared["standalone_question"],
     }

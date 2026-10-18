@@ -148,6 +148,22 @@ class DeleteResponse(BaseModel):
     deleted: bool
 
 
+class DayCount(BaseModel):
+    day: str
+    queries: int
+
+
+class StatsResponse(BaseModel):
+    queries: int
+    avg_retrieval_ms: int
+    avg_generation_ms: int
+    p95_total_ms: int
+    feedback_up: int
+    feedback_down: int
+    feedback_positive_ratio: float | None = None
+    queries_per_day: list[DayCount]
+
+
 class KeyCreateRequest(BaseModel):
     label: str | None = Field(default=None, max_length=80)
 
@@ -211,6 +227,18 @@ def load_history(session_id: str | None) -> list[dict]:
     return store.recent_turns(session_id)
 
 
+def record_query(session_id: str | None, question: str, payload: dict) -> None:
+    store.add_query_log(
+        session_id=session_id,
+        question=question,
+        standalone_question=payload.get("standalone_question", question),
+        retrieved_ids=payload.get("retrieved_ids", []),
+        retrieval_ms=payload.get("retrieval_ms", 0),
+        generation_ms=payload.get("generation_ms", 0),
+        model=payload.get("model", "unknown"),
+    )
+
+
 def sse(event: str, data: object) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
@@ -238,6 +266,8 @@ def query(request: QueryRequest) -> QueryResponse:
         path_prefix=request.path_prefix,
     )
 
+    record_query(request.session_id, request.question, result)
+
     message_id = None
     if request.session_id:
         store.add_message(request.session_id, "user", request.question)
@@ -260,12 +290,16 @@ def query_stream(request: QueryRequest) -> StreamingResponse:
                 language=request.language,
                 path_prefix=request.path_prefix,
             ):
-                if name == "done" and request.session_id:
-                    store.add_message(request.session_id, "user", request.question)
-                    data["message_id"] = store.add_message(
-                        request.session_id, "assistant", data["answer"], data["sources"]
-                    )
-                    data["session_id"] = request.session_id
+                if name == "done":
+                    record_query(request.session_id, request.question, data)
+                    data.pop("retrieved_ids", None)
+                    data.pop("standalone_question", None)
+                    if request.session_id:
+                        store.add_message(request.session_id, "user", request.question)
+                        data["message_id"] = store.add_message(
+                            request.session_id, "assistant", data["answer"], data["sources"]
+                        )
+                        data["session_id"] = request.session_id
                 yield sse(name, data)
         except Exception:
             logger.exception("streaming query failed")
@@ -405,6 +439,11 @@ def delete_document(document_id: str) -> DeleteResponse:
 def create_key(request: KeyCreateRequest) -> KeyCreated:
     key_id, raw_key = store.create_api_key(request.label)
     return KeyCreated(id=key_id, label=request.label, key=raw_key)
+
+
+@app.get("/admin/stats", response_model=StatsResponse, dependencies=admin_only)
+def stats() -> StatsResponse:
+    return StatsResponse(**store.query_stats())
 
 
 @app.get("/admin/keys", response_model=list[KeyItem], dependencies=admin_only)

@@ -51,6 +51,18 @@ CREATE TABLE IF NOT EXISTS feedback (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS query_log (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id          TEXT,
+    question            TEXT NOT NULL,
+    standalone_question TEXT NOT NULL,
+    retrieved_ids       TEXT NOT NULL,
+    retrieval_ms        INTEGER NOT NULL,
+    generation_ms       INTEGER NOT NULL,
+    model               TEXT NOT NULL,
+    created_at          TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS api_keys (
     id         TEXT PRIMARY KEY,
     key_hash   TEXT NOT NULL UNIQUE,
