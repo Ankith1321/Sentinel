@@ -1,0 +1,567 @@
+<title>Sentinel Blueprint</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky tab bar over one-section-at-a-time pages; each page opens with a one-line "so what" before detail. */
+:root{
+  --bg:#f5f6f3; --surface:#ffffff; --ink:#14181c; --muted:#56626b; --line:#dbe0dd;
+  --accent:#0b7a6b; --accent-soft:#dff1ed; --accent-ink:#ffffff;
+  --done:#1d7f48; --next:#0b7a6b; --warn:#a96a0c; --todo:#76828a; --bad:#b42318;
+  --done-soft:#e0f2e7; --warn-soft:#f8ecd6; --todo-soft:#eceff0; --bad-soft:#fbe4e1;
+  --font:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1316; --surface:#161d21; --ink:#e7ecee; --muted:#98a5ac; --line:#25313a;
+    --accent:#3cc4ae; --accent-soft:#12312c; --accent-ink:#0a1411;
+    --done:#4cc38a; --next:#3cc4ae; --warn:#e3a84b; --todo:#7f8c94; --bad:#f28b80;
+    --done-soft:#14301f; --warn-soft:#33260f; --todo-soft:#1d262b; --bad-soft:#3a1a17;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1316; --surface:#161d21; --ink:#e7ecee; --muted:#98a5ac; --line:#25313a;
+  --accent:#3cc4ae; --accent-soft:#12312c; --accent-ink:#0a1411;
+  --done:#4cc38a; --next:#3cc4ae; --warn:#e3a84b; --todo:#7f8c94; --bad:#f28b80;
+  --done-soft:#14301f; --warn-soft:#33260f; --todo-soft:#1d262b; --bad-soft:#3a1a17;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 56px}
+.wrap{max-width:1040px;margin:0 auto}
+h1,h2,h3{text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(28px,5vw,40px);font-weight:700;letter-spacing:-.02em}
+h2{font-size:22px;font-weight:650;letter-spacing:-.01em}
+h3{font-size:16px;font-weight:650}
+p{margin:0}
+.mono{font-family:var(--mono)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header.top{padding:36px 0 18px;display:grid;gap:10px}
+header.top p{max-width:62ch;color:var(--muted);font-size:16px}
+nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+  display:flex;gap:4px;overflow-x:auto;padding:8px 0;margin-bottom:26px}
+nav.tabs button{font:inherit;font-size:14px;font-weight:500;color:var(--muted);background:none;border:0;border-radius:8px;
+  padding:8px 14px;cursor:pointer;white-space:nowrap}
+nav.tabs button:hover{color:var(--ink);background:var(--surface)}
+nav.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.page{display:grid;gap:28px}
+.lede{font-size:18px;max-width:64ch;line-height:1.5}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.card h3{margin-bottom:6px}
+.card p,.card li{color:var(--muted);font-size:14px}
+.card ul{margin:6px 0 0;padding-left:18px}
+.stat{display:grid;gap:2px}
+.stat b{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.stat span{font-size:13px;color:var(--muted)}
+.stat small{font-size:12px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.p-done{color:var(--done);background:var(--done-soft)}
+.p-next{color:var(--accent);background:var(--accent-soft)}
+.p-warn{color:var(--warn);background:var(--warn-soft)}
+.p-todo{color:var(--todo);background:var(--todo-soft)}
+.p-bad{color:var(--bad);background:var(--bad-soft)}
+.callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 10px 10px 0;font-size:14px}
+.callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+.callout b{font-weight:650}
+.rail{display:flex;gap:0;overflow-x:auto;padding-bottom:4px}
+.step{flex:1 0 108px;background:var(--surface);border:1px solid var(--line);border-right-width:0;padding:12px 10px;cursor:pointer;
+  font:inherit;color:var(--ink);text-align:left;display:grid;gap:6px;align-content:start}
+.step:first-child{border-radius:12px 0 0 12px}
+.step:last-child{border-radius:0 12px 12px 0;border-right-width:1px}
+.step b{font-size:14px}
+.step[aria-pressed="true"]{background:var(--accent-soft);outline:2px solid var(--accent);outline-offset:-2px;z-index:1}
+.stepdetail{margin-top:10px;min-height:3.2em}
+.track{display:flex;gap:4px;margin:8px 0}
+.track i{flex:1;height:10px;border-radius:3px;background:var(--todo-soft);border:1px solid var(--line)}
+.track i.done{background:var(--done);border-color:var(--done)}
+.track i.next{background:var(--accent);border-color:var(--accent)}
+details{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+details+details{margin-top:8px}
+summary{cursor:pointer;padding:13px 16px;list-style:none;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";margin-left:auto;font-family:var(--mono);color:var(--muted)}
+details[open]>summary::after{content:"–"}
+summary .t{font-weight:600;flex:1 1 200px;min-width:0}
+summary .num{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:3.2em}
+.body{padding:0 16px 16px;display:grid;gap:10px;font-size:14px}
+.body p{color:var(--muted)}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 14px;font-size:14px}
+.kv dt{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding-top:3px}
+.kv dd{margin:0;min-width:0}
+.cols{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))}
+.col h3{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.col ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.col li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;display:grid;gap:4px}
+.lane{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+.node{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:500;min-width:0}
+.arrow{align-self:center;color:var(--muted);font-family:var(--mono)}
+.node.ok{border-color:var(--done)}
+.node.err{border-color:var(--bad)}
+.node.new{border-style:dashed;border-color:var(--accent)}
+.swatches{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.sw{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);font-size:12px}
+.sw i{display:block;height:44px;border-bottom:1px solid var(--line)}
+.sw div{padding:8px 10px;display:grid;gap:1px}
+.sw b{font-size:13px}
+.sw span{color:var(--muted);font-family:var(--mono);font-size:11px}
+.seg{display:inline-flex;gap:4px;background:var(--todo-soft);padding:4px;border-radius:10px;flex-wrap:wrap}
+.seg button{font:inherit;font-size:13px;font-weight:500;border:0;background:none;color:var(--muted);padding:6px 12px;border-radius:7px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.mock{background:#09090b;color:#f4f4f5;border-radius:14px;padding:20px;display:grid;gap:14px;border:1px solid var(--line);font-family:system-ui,sans-serif}
+.mock .m-card{background:#18181b;border:1px solid #27272a;border-radius:16px;padding:14px;display:grid;gap:10px}
+.mock .m-input{background:#09090b;border:1px solid #3f3f46;border-radius:12px;padding:12px;color:#a1a1aa;font-size:13px;min-height:56px}
+.mock .m-btn{justify-self:start;background:#fff;color:#09090b;border-radius:12px;padding:7px 16px;font-weight:500;font-size:13px}
+.mock .m-btn.off{opacity:.5}
+.mock .m-err{background:rgba(69,10,10,.4);border:1px solid #7f1d1d;color:#fca5a5;border-radius:16px;padding:12px;font-size:13px}
+.mock .m-src{background:#09090b;border:1px solid #27272a;border-radius:12px;padding:10px;font-size:12px;color:#a1a1aa}
+.mock h4{margin:0;font-size:15px}
+.mock small{color:#71717a;font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+tr:last-child td{border-bottom:0}
+td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12px;background:var(--todo-soft);padding:1px 5px;border-radius:4px}
+.tblpick{display:flex;gap:6px;flex-wrap:wrap}
+.tblpick button{font:inherit;font-family:var(--mono);font-size:12px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.tblpick button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.foot{margin-top:40px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+@media (prefers-reduced-motion:no-preference){section.page{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(3px)}to{opacity:1;transform:none}}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <span class="eyebrow">Project blueprint · six pre-build documents in one page</span>
+  <h1>Sentinel</h1>
+  <p>An internal engineering assistant that answers questions about a large codebase and cites the exact files each answer came from. Currently pointed at Apache Superset.</p>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Documents">
+  <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+  <button role="tab" data-tab="prd" aria-selected="false">1 · Product</button>
+  <button role="tab" data-tab="trd" aria-selected="false">2 · Technical</button>
+  <button role="tab" data-tab="flow" aria-selected="false">3 · App flow</button>
+  <button role="tab" data-tab="ui" aria-selected="false">4 · UI/UX</button>
+  <button role="tab" data-tab="schema" aria-selected="false">5 · Schema</button>
+  <button role="tab" data-tab="plan" aria-selected="false">6 · Plan</button>
+</nav>
+
+<!-- OVERVIEW -->
+<section class="page" id="overview">
+  <p class="lede">A user asks a question. Sentinel finds the relevant source chunks, hands only those to an LLM, and returns an answer with citations. It works end to end today, but it is slow and nobody has measured how good it is yet.</p>
+
+  <div class="grid g3">
+    <div class="card stat"><span>Retrieval latency</span><b>35–40 ms</b><small>warm model, measured in Phase 1</small></div>
+    <div class="card stat"><span>Answer generation (local model)</span><b>50–60 s</b><small>CPU only, ~220 tokens. Too slow to demo</small></div>
+    <div class="card stat"><span>Retrieval hit@5</span><b>not measured</b><small>no eval set exists yet</small></div>
+  </div>
+
+  <div class="grid">
+    <h2>How a question becomes an answer</h2>
+    <p style="color:var(--muted)">Click a stage to see what it does and what's wrong with it.</p>
+    <div class="rail" id="rail"></div>
+    <div class="callout stepdetail" id="stepdetail"></div>
+  </div>
+
+  <div class="grid">
+    <h2>Where the project is</h2>
+    <div class="track" id="trackOverview" aria-hidden="true"></div>
+    <div class="callout"><b>You are here: Phase 1.5.</b> Phase 1 (fix what's broken) is finished and verified live. The next job is a 30–40 question eval set, because chunking and hybrid search can't be judged without a baseline number. <a href="#plan" data-goto="plan" style="color:var(--accent)">See the full plan →</a></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card"><h3>What each document answers</h3>
+      <ul>
+        <li><b>1 Product:</b> who is it for and what does success look like?</li>
+        <li><b>2 Technical:</b> which tools, and why those?</li>
+        <li><b>3 App flow:</b> what does the user click through?</li>
+        <li><b>4 UI/UX:</b> how should every screen look?</li>
+        <li><b>5 Schema:</b> what gets stored, and where?</li>
+        <li><b>6 Plan:</b> what do we build, in what order, and when is it done?</li>
+      </ul></div>
+    <div class="card"><h3>Three things to remember</h3>
+      <ul>
+        <li>Answers must cite their source files. An uncited claim is a bug.</li>
+        <li>Nothing counts as "better" until the eval set shows a number going up.</li>
+        <li>Auth is required before anyone outside localhost can reach it.</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- PRD -->
+<section class="page" id="prd" hidden>
+  <div class="grid"><span class="eyebrow">Product requirements</span><h2>Help engineers get a grounded answer without interrupting a teammate.</h2>
+  <p class="lede" style="font-size:16px">A confident wrong answer about how code behaves is worse than no answer, because people build bugs on it. So every answer must be backed by retrieved source and cite it.</p></div>
+
+  <div class="grid g2">
+    <div class="card"><span class="pill p-next">Primary user</span><h3 style="margin-top:8px">Onboarding engineer</h3><p>Joined in the last 0–3 months and is about to own code they haven't read. Needs orientation without using up a senior's time.</p></div>
+    <div class="card"><span class="pill p-todo">Secondary user</span><h3 style="margin-top:8px">Cross-cutting engineer</h3><p>Experienced, but a change touches modules outside their usual area. Needs to understand an unfamiliar path fast.</p></div>
+  </div>
+  <div class="callout warn"><b>Not for:</b> customers or non-engineers asking product questions, general-purpose chat, code generation, or multi-tenant SaaS. One organization's codebase per deployment.</div>
+
+  <div class="grid">
+    <h2>Success metrics</h2>
+    <div class="callout warn">Targets are provisional. Replace them with firm numbers after the first baseline run. A target set before any measurement is a guess.</div>
+    <div class="scroll"><table>
+      <thead><tr><th>Metric</th><th>What it measures</th><th>Provisional target</th><th>Today</th></tr></thead>
+      <tbody>
+        <tr><td><b>Retrieval hit@5</b></td><td>% of eval questions where the right file is in the top 5 chunks</td><td>≥ 70% after Phase 3, never below baseline</td><td><span class="pill p-todo">not measured</span></td></tr>
+        <tr><td><b>Groundedness</b></td><td>% of answer sentences supported by their cited source</td><td>≥ 90%</td><td><span class="pill p-todo">not measured</span></td></tr>
+        <tr><td><b>p95 latency</b> /query</td><td>End-to-end time for the slowest 5% of requests</td><td>&lt; 10 s on the API-LLM path</td><td><span class="pill p-bad">50–60 s local</span></td></tr>
+        <tr><td><b>Uncited claims</b></td><td>Factual statements with no [S1]-style citation</td><td>0</td><td><span class="pill p-warn">requested, not enforced</span></td></tr>
+      </tbody></table></div>
+  </div>
+
+  <div class="grid">
+    <h2>What has to be true for v1</h2>
+    <div class="cols">
+      <div class="col"><h3><span class="pill p-done">Must-have</span></h3><ul>
+        <li><b>/query returns a cited answer</b><span class="pill p-done">done</span></li>
+        <li><b>Embedding model loads once</b><span class="pill p-done">done</span></li>
+        <li><b>Incremental ingestion, no duplicates</b><span class="pill p-todo">Phase 4</span></li>
+        <li><b>Eval set run at least once</b><span class="pill p-next">Phase 1.5 · next</span></li>
+        <li><b>Auth outside localhost</b><span class="pill p-todo">Phase 7</span></li></ul></div>
+      <div class="col"><h3><span class="pill p-warn">Should-have</span></h3><ul>
+        <li><b>Hybrid retrieval (vector + BM25)</b><span class="pill p-todo">Phase 3</span></li>
+        <li><b>AST-aware Python chunking</b><span class="pill p-todo">Phase 2</span></li>
+        <li><b>Streaming responses</b><span class="pill p-todo">Phase 5</span></li></ul></div>
+      <div class="col"><h3><span class="pill p-todo">Could-have</span></h3><ul>
+        <li><b>Multi-turn memory</b><span class="pill p-todo">Phase 6</span></li>
+        <li><b>Drag-and-drop upload UI</b><span class="pill p-todo">Phase 8</span></li>
+        <li><b>Code-vs-docs query classifier (PyTorch)</b><span>Lowest priority, do last</span></li></ul></div>
+    </div>
+  </div>
+
+  <div class="grid g3">
+    <div class="card"><h3>Story 1</h3><p>"I ask how the chart caching layer works and get an answer citing the actual files, not a plausible guess."</p></div>
+    <div class="card"><h3>Story 2</h3><p>"I re-run ingestion after a code change and the index reflects it without doubling every chunk."</p></div>
+    <div class="card"><h3>Story 3</h3><p>"As a reviewer, I open the deployed link and get a working, cited answer on the first try, every time."</p></div>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h3>Risk: local model quality</h3><p>The small local model may miss the groundedness bar even with an eval set. That, not just speed, is why Phase 5 swaps in an API model.</p></div>
+    <div class="card"><h3>Risk: building before measuring</h3><p>Better chunking or hybrid search can't be proven to help without the eval baseline. Hence Phase 1.5.</p></div>
+  </div>
+</section>
+
+<!-- TRD -->
+<section class="page" id="trd" hidden>
+  <div class="grid"><span class="eyebrow">Technical requirements</span><h2>One FastAPI service, one vector store, two lifecycles.</h2>
+  <p class="lede" style="font-size:16px">This document records why each choice was made. Check it before reversing a decision.</p></div>
+
+  <div class="grid">
+    <h3>Build time (offline, manual today)</h3>
+    <div class="lane"><div class="node">Scan files</div><span class="arrow">→</span><div class="node">Load</div><span class="arrow">→</span><div class="node">Chunk</div><span class="arrow">→</span><div class="node">Embed</div><span class="arrow">→</span><div class="node ok">ChromaDB upsert</div></div>
+    <h3 style="margin-top:6px">Query time (online, per request)</h3>
+    <div class="lane"><div class="node">Embed question</div><span class="arrow">→</span><div class="node">Vector search</div><span class="arrow">→</span><div class="node">Top-k chunks</div><span class="arrow">→</span><div class="node">Build prompt</div><span class="arrow">→</span><div class="node err">LLM (slow)</div><span class="arrow">→</span><div class="node">Answer + sources</div></div>
+    <p style="color:var(--muted);font-size:14px">No queue, no worker, no load balancer. A single instance by design, not by oversight.</p>
+  </div>
+
+  <div class="grid">
+    <h2>Stack decisions</h2><p style="color:var(--muted)">Open a row for the reasoning and what was rejected.</p>
+    <div>
+      <details><summary><span class="t">API framework</span><span class="pill p-done">FastAPI</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Native async, Pydantic validation at the boundary, free OpenAPI docs.</dd><dt>Rejected</dt><dd>Flask (no native async without extra tooling). Django (too heavy for a single API with no admin or ORM need).</dd></dl></div></details>
+      <details><summary><span class="t">Vector store</span><span class="pill p-done">ChromaDB, local</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Zero extra infrastructure, fine up to roughly hundreds of thousands of vectors.</dd><dt>Rejected</dt><dd>Pinecone and Qdrant. Real options once it must scale past one machine; premature today.</dd></dl></div></details>
+      <details><summary><span class="t">Embedding model</span><span class="pill p-done">all-MiniLM-L6-v2 · 384d</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Fast on CPU, no per-call cost, adequate baseline quality.</dd><dt>Rejected</dt><dd>bge-large-en-v1.5 (1024d): better, but 3× the storage and slower on CPU. The upgrade waits for an eval number to justify it.</dd></dl></div></details>
+      <details><summary><span class="t">LLM</span><span class="pill p-warn">Qwen 1.5B local today · API planned</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>API models give much better grounded answers per dollar than a small local model.</dd><dt>Rejected</dt><dd>7B+ local models without quantization (not viable on CPU). Fine-tuning on the codebase (goes stale the moment code changes and cannot cite files).</dd></dl></div></details>
+      <details><summary><span class="t">Frontend</span><span class="pill p-done">Next.js 15 + Tailwind</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>TypeScript, fast iteration, room for API routes if a BFF layer is ever needed.</dd><dt>Rejected</dt><dd>Plain React SPA (no server-rendering story). SvelteKit (smaller ecosystem fit).</dd></dl></div></details>
+      <details><summary><span class="t">Containers</span><span class="pill p-done">Docker</span></summary><div class="body"><dl class="kv"><dt>Where</dt><dd><code>docker/backend.Dockerfile</code> and <code>docker/docker-compose.yml</code></dd><dt>Why</dt><dd>Standard, portable, matches the Azure target.</dd></dl></div></details>
+      <details><summary><span class="t">Deploy targets</span><span class="pill p-todo">HF Spaces + Azure</span></summary><div class="body"><dl class="kv"><dt>Why both</dt><dd>Hugging Face Spaces is the free public demo link (port 7860). Azure Container Apps is the enterprise story the target roles name.</dd><dt>Deferred</dt><dd>Self-managed VM or bare Kubernetes, until the core product works.</dd></dl></div></details>
+    </div>
+  </div>
+
+  <div class="grid">
+    <h2>Non-functional requirements</h2>
+    <div class="grid g3">
+      <div class="card stat"><span>Retrieval latency</span><b>35–40 ms</b><small>Phase 1, CPU dev machine. Re-measure after Phase 2/3.</small></div>
+      <div class="card stat"><span>Generation latency</span><b>50–60 s</b><small>Phase 1, local Qwen 1.5B, ~220 tokens. This is the case for Phase 5.</small></div>
+      <div class="card stat"><span>Throughput / uptime</span><b>no target</b><small>Single-user demo. No load testing yet.</small></div>
+    </div>
+    <div class="callout warn"><b>Data freshness is zero today.</b> The index only reflects whatever was on disk the last time someone ran the two ingestion scripts by hand (fixed in Phase 4).</div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card"><h3>Security</h3><ul>
+      <li><span class="pill p-done">verified</span> <code>.env</code> is gitignored</li>
+      <li><span class="pill p-done">verified</span> CORS is an explicit allowlist, never a wildcard</li>
+      <li><span class="pill p-done">verified</span> <code>min_length</code> and <code>ge/le</code> on <code>QueryRequest</code></li>
+      <li><span class="pill p-bad">missing</span> Auth. Required before any public deployment (Phase 7)</li></ul></div>
+    <div class="card"><h3>Constraints and open risks</h3><ul>
+      <li>CPU-only dev machine. Test every model-loading change here; float16 can lack CPU kernels.</li>
+      <li>ChromaDB has no horizontal scaling.</li>
+      <li><code>loader.py</code> mints a fresh UUID per run, so re-ingestion duplicates chunks.</li>
+      <li>Local generation latency is only fit for offline batch eval.</li></ul></div>
+  </div>
+</section>
+
+<!-- APP FLOW -->
+<section class="page" id="flow" hidden>
+  <div class="grid"><span class="eyebrow">App flow</span><h2>Today: one screen. After Phase 6 and 8: chat, upload, and session history.</h2></div>
+  <div class="seg" role="group" aria-label="Flow version">
+    <button data-flow="now" aria-pressed="true">Today (v1)</button>
+    <button data-flow="target" aria-pressed="false">Target</button>
+  </div>
+
+  <div id="flow-now" class="grid">
+    <div class="lane">
+      <div class="node">Open /</div><span class="arrow">→</span><div class="node">Type question</div><span class="arrow">→</span><div class="node">Click Ask Sentinel</div><span class="arrow">→</span>
+      <div class="grid" style="gap:8px"><div class="node ok">Success: answer + source cards</div><div class="node err">Error: red panel above the answer</div></div>
+    </div>
+    <p style="color:var(--muted);font-size:14px">Either outcome returns to the input. There is no session, no history, and no navigation.</p>
+  </div>
+
+  <div id="flow-target" class="grid" hidden>
+    <div class="lane">
+      <div class="node">Open app</div><span class="arrow">→</span>
+      <div class="grid" style="gap:8px"><div class="node new">No saved session → POST /sessions</div><div class="node new">Saved session → GET /sessions/{id}</div></div><span class="arrow">→</span>
+      <div class="node new">Chat thread</div>
+    </div>
+    <div class="lane">
+      <div class="node new">Send question</div><span class="arrow">→</span><div class="node new">POST /query/stream · tokens appear live</div><span class="arrow">→</span><div class="node new">👍 / 👎 on the answer</div>
+    </div>
+    <div class="lane">
+      <div class="node new">Chat</div><span class="arrow">⇄</span><div class="node new">Upload → POST /documents/upload → poll GET /jobs/{id}</div>
+    </div>
+    <div class="lane">
+      <div class="node new">Chat</div><span class="arrow">⇄</span><div class="node new">Session list → switch or start new session</div>
+    </div>
+    <p style="color:var(--muted);font-size:14px">Dashed borders mean not built yet.</p>
+  </div>
+
+  <div class="grid">
+    <h2>Screens</h2>
+    <div>
+      <details open><summary><span class="t">Chat thread</span><span class="pill p-todo">replaces today's single Q&amp;A</span></summary><div class="body">
+        <dl class="kv"><dt>Entry</dt><dd>App load. Resumes the last session from local storage, else creates one.</dd>
+        <dt>Shows</dt><dd>Full history. Each answer carries its own source cards, since different turns have different sources.</dd>
+        <dt>Top-k</dt><dd>A 1–15 slider. No backend change needed; <code>QueryRequest.top_k</code> already has that range.</dd>
+        <dt>Streaming</dt><dd><code>POST /query/stream</code> read with <code>fetch</code>, not <code>EventSource</code>. EventSource cannot send the <code>X-API-Key</code> header and only supports GET.</dd>
+        <dt>Errors</dt><dd>Render as a failed message bubble inline in the thread, not a page banner.</dd></dl></div></details>
+      <details><summary><span class="t">Upload</span><span class="pill p-todo">Phase 8</span></summary><div class="body">
+        <dl class="kv"><dt>Entry</dt><dd>Explicit navigation from chat. Never automatic, never blocking.</dd>
+        <dt>Accepts</dt><dd><code>.py</code> <code>.md</code> <code>.pdf</code> <code>.docx</code> <code>.txt</code> by drag-and-drop or picker.</dd>
+        <dt>Behavior</dt><dd>Submits to <code>POST /documents/upload</code>, which returns a job id at once. The UI shows "processing" and polls <code>GET /jobs/{id}</code>. No spinner that implies "almost done".</dd></dl></div></details>
+      <details><summary><span class="t">Session history</span><span class="pill p-todo">Phase 6</span></summary><div class="body">
+        <dl class="kv"><dt>Entry</dt><dd>A list of past sessions from the chat screen.</dd><dt>Does</dt><dd>Resume one or start new. No sharing and no multi-user access control, matching the "no users table" decision.</dd></dl></div></details>
+    </div>
+    <div class="callout warn"><b>Deliberately not built:</b> account creation or login screens (auth is an API-key header, not a UI flow), and any settings screen beyond the top-k slider.</div>
+  </div>
+</section>
+
+<!-- UI/UX -->
+<section class="page" id="ui" hidden>
+  <div class="grid"><span class="eyebrow">UI/UX design brief</span><h2>Dark only, flat, content first. Every rule comes from the shipped page.</h2>
+  <p class="lede" style="font-size:16px">This documents what exists. It is not a redesign. This brief's own page follows your system theme; the app it describes is dark-only on purpose.</p></div>
+
+  <div class="grid"><h2>Palette</h2>
+    <div class="swatches" id="swatches"></div>
+  </div>
+
+  <div class="grid"><h2>Try the four states</h2>
+    <div class="seg" role="group" aria-label="UI state" id="stateSeg">
+      <button data-state="empty" aria-pressed="true">Empty</button><button data-state="loading" aria-pressed="false">Loading</button><button data-state="error" aria-pressed="false">Error</button><button data-state="success" aria-pressed="false">Success</button>
+    </div>
+    <div class="mock" id="mock" aria-live="polite"></div>
+    <div class="callout" id="stateNote"></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card"><h3>Type</h3><p>System default sans, no webfont, because the tool has no visual need for one.</p>
+      <ul style="list-style:none;padding:0;display:grid;gap:6px;margin-top:10px">
+        <li style="font-size:28px;font-weight:700;color:var(--ink)">text-4xl bold <span class="mono" style="font-size:11px;color:var(--muted)">page title</span></li>
+        <li style="font-size:20px;font-weight:600;color:var(--ink)">text-xl semibold <span class="mono" style="font-size:11px;color:var(--muted)">section headers</span></li>
+        <li style="font-size:14px;color:var(--ink)">text-sm <span class="mono" style="font-size:11px;color:var(--muted)">body, previews</span></li>
+        <li style="font-size:12px;color:var(--ink)">text-xs <span class="mono" style="font-size:11px;color:var(--muted)">metadata, distance</span></li></ul></div>
+    <div class="card"><h3>Layout</h3><ul>
+      <li>Single column, <code>max-w-5xl</code>, centered, <code>px-6 py-10</code></li>
+      <li>Cards: <code>rounded-2xl</code>, bordered, no shadow</li>
+      <li>No sidebar or top nav yet</li>
+      <li>Answer is a <code>&lt;pre&gt;</code> block so citation formatting survives</li></ul></div>
+  </div>
+
+  <div class="grid"><h2>Rules for any new screen</h2>
+    <div class="grid g3">
+      <div class="card"><h3>Stay in palette</h3><p>Zinc, white, red. Update this brief before adding any new color.</p></div>
+      <div class="card"><h3>Reuse the card</h3><p><code>rounded-2xl</code>, <code>zinc-900</code> fill, <code>zinc-800</code> border. No new container style per screen.</p></div>
+      <div class="card"><h3>States persist</h3><p>Loading and error are rendered states, not toasts. A 60-second wait makes a vanishing toast read as broken.</p></div>
+    </div>
+    <div class="callout warn"><b>Known defect:</b> the loading caption is a <code>&lt;p&gt;</code> nested inside the <code>&lt;button&gt;</code>, which is invalid HTML. Move it out. The textarea staying editable while loading is a deliberate exception to rule 8.7, so users can draft the next question; the submit button blocks double-sends.</div>
+  </div>
+</section>
+
+<!-- SCHEMA -->
+<section class="page" id="schema" hidden>
+  <div class="grid"><span class="eyebrow">Backend schema</span><h2>ChromaDB keeps searching. A new SQLite file keeps everything else.</h2>
+  <p class="lede" style="font-size:16px">Nothing here is built yet. It is designed ahead of Phases 4 and 6 so they aren't improvised. Migrate to Postgres only if it ever runs as more than one instance.</p></div>
+
+  <div class="grid g2">
+    <div class="card"><span class="pill p-done">exists today</span><h3 style="margin-top:8px">ChromaDB</h3><p>Vectors, chunk text, and chunk metadata (<code>source_id</code>, <code>path</code>, <code>language</code>, <code>title</code>, <code>chunk_index</code>). Anything that needs similarity search.</p></div>
+    <div class="card"><span class="pill p-todo">to build</span><h3 style="margin-top:8px">SQLite</h3><p>Anything relational: ingested-document tracking, sessions, messages, feedback, jobs, API keys.</p></div>
+  </div>
+
+  <div class="grid"><h2>Tables</h2>
+    <div class="tblpick" id="tblpick" role="group" aria-label="Pick a table"></div>
+    <div class="card" id="tbl" aria-live="polite"></div>
+  </div>
+
+  <div class="grid"><h2>How tables connect</h2>
+    <div class="lane">
+      <div class="node">sessions</div><span class="arrow">1 → many</span><div class="node">messages</div><span class="arrow">1 → 0..1</span><div class="node">feedback</div>
+    </div>
+    <div class="lane">
+      <div class="node">documents</div><span class="arrow">1 → many</span><div class="node">jobs</div><span class="arrow" style="font-size:12px">· Chroma chunk ids are <code>{documents.id}::chunk_{n}</code></span>
+    </div>
+    <div class="lane"><div class="node">api_keys</div><span class="arrow" style="font-size:12px">standalone: keys are stored hashed, shown once</span></div>
+  </div>
+
+  <div class="callout warn"><b>Re-indexing rule.</b> When a file changes, delete all its old chunks from Chroma by <code>source_id</code> first, then upsert the new ones. Upsert alone only overwrites ids that still exist, so a file shrinking from 10 chunks to 6 would leave chunks 7–10 in the index serving stale content. Do the same for removed or renamed files.</div>
+
+  <div class="grid g2">
+    <div class="card"><h3>Deliberately not built</h3><ul>
+      <li><b>No users table.</b> Auth is an API key, not accounts.</li>
+      <li><b>No full-text-search table.</b> BM25 runs in-process until that's a measured bottleneck.</li>
+      <li><b>No chunks table.</b> Delete by <code>source_id</code> filter in Chroma instead.</li></ul></div>
+    <div class="card"><h3>Identity vs. change</h3><p><code>documents.id</code> is derived from the path, so it stays stable across runs. <code>content_hash</code> (SHA-256) is what says whether the file changed. This replaces today's fresh-UUID-per-run bug.</p></div>
+  </div>
+</section>
+
+<!-- PLAN -->
+<section class="page" id="plan" hidden>
+  <div class="grid"><span class="eyebrow">Implementation plan</span><h2>Eleven phases, each with a definition of done you can check.</h2>
+  <p class="lede" style="font-size:16px">This is the current source of truth for what "done" means. The old roadmap in CONTEXT.md is history.</p></div>
+
+  <div class="track" id="trackPlan" aria-hidden="true"></div>
+  <div class="seg" role="group" aria-label="Filter phases" id="planFilter">
+    <button data-f="all" aria-pressed="true">All</button><button data-f="done" aria-pressed="false">Done</button><button data-f="next" aria-pressed="false">Next</button><button data-f="todo" aria-pressed="false">Later</button>
+  </div>
+  <div id="phases"></div>
+
+  <div class="callout"><b>Why 1.5 jumped the queue.</b> Phases 2 and 3 are each justified by a hit-rate number going up. Without a baseline from the eval set there is no way to know whether either helped. The full observability stack can wait for Phase 9; the minimal eval set cannot.</div>
+</section>
+
+<p class="foot">Source documents live in <span class="mono">docs/01_PRD.md</span> through <span class="mono">docs/06_IMPLEMENTATION_PLAN.md</span> and remain the source of truth. This page is a reading view of them.</p>
+</div>
+
+<script>
+(function(){
+  var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+
+  var PH=[
+    {n:'1',t:'Fix what\'s broken',s:'done',d:'/query returns a cited answer over real HTTP. The embedding model is a singleton (two calls reuse it, ~35–40 ms). No dead files or unreachable code. The frontend renders success and error states. Verified live, not just read.',v:'Commits 74b61af to 7fd53a3 on the ankith branch.'},
+    {n:'1.5',t:'Minimal eval set',s:'next',d:'eval/qa_set.json holds 30–40 questions (about 20 code, 10 docs, 5–10 exact-identifier lookups) with expected paths chosen from the Superset repo itself, not from retriever output. eval/run_eval.py reports hit@5, hit@1 and MRR, lists every miss, and writes a timestamped result file. Run once, baseline recorded in the PRD.',v:'A baseline hit@5 number exists.'},
+    {n:'2',t:'Chunking upgrade',s:'todo',d:'Python chunks at function and class boundaries using ast. Chunk size capped in tokens (512 target, 1024 max). Chunks under 20 tokens rejected as noise.',v:'Re-run the eval set; hit@5 must not regress.'},
+    {n:'3',t:'Retrieval upgrade',s:'todo',d:'BM25 runs beside Chroma. Reciprocal Rank Fusion merges both result sets. A cross-encoder re-ranks the top 20 to the top 5. Metadata pre-filters (language, path prefix) work on /search and /query.',v:'Same eval set; hit@5 must go up. It does not ship without that.'},
+    {n:'4',t:'Ingestion API',s:'todo',d:'POST /documents/upload computes SHA-256, checks the documents table, returns a job id recorded in the jobs table, and processes in a BackgroundTasks job. Re-uploading an unchanged file is a no-op. GET /documents, GET /jobs/{id} and DELETE /documents/{id} work on real data.',v:'Unchanged re-upload verified as a no-op.'},
+    {n:'5',t:'LLM upgrade',s:'todo',d:'An API model (Claude Haiku or GPT-4o-mini) is the default, gated behind an API key env var. Local Qwen stays as a documented fallback. POST /query/stream streams tokens over SSE. Context is trimmed to a token budget, never cut mid-chunk.',v:'p95 /query under the target on the API path.'},
+    {n:'6',t:'Conversation memory',s:'todo',d:'sessions and messages tables are live. POST /sessions and GET /sessions/{id} work. The last 10 turns go into the prompt. Follow-up questions are rewritten to be self-contained before embedding.',v:'A real manual multi-turn test, not one question run twice.'},
+    {n:'7',t:'Authentication',s:'todo',d:'Every route except /health rejects a missing or invalid X-API-Key. Keys are stored hashed in api_keys and shown once. A minimal admin path generates and revokes keys.',v:'Request without a key gets rejected on every route.'},
+    {n:'8',t:'Frontend upgrade',s:'todo',d:'Matches the App Flow exactly: chat thread, streaming render, upload screen, top-k slider, feedback buttons. Each is wired to a real, tested endpoint. No UI ships ahead of its endpoint.',v:'Walk the App Flow end to end.'},
+    {n:'9',t:'Observability',s:'todo',d:'Every query is logged with its text, retrieved chunk ids and latency in ms. Feedback persists to the feedback table. The full eval suite produces one trackable hit-rate number.',v:'Log line exists for each query.'},
+    {n:'10',t:'Deploy and CI/CD',s:'todo',d:'Backend and frontend run as two containers on Azure Container Apps at a public URL, behind the Phase 7 key check. GitHub Actions lints, runs chunker and retriever tests, builds images and pushes them. The README links the live demo and the eval numbers.',v:'A reviewer can open the link and get a cited answer.'}
+  ];
+  var SL={done:['p-done','done'],next:['p-next','next'],todo:['p-todo','later']};
+
+  function track(el){
+    el.innerHTML=PH.map(function(p){return '<i class="'+(p.s==='done'?'done':p.s==='next'?'next':'')+'" title="Phase '+p.n+' · '+p.t+'"></i>'}).join('');
+  }
+  track($('#trackOverview')); track($('#trackPlan'));
+
+  function renderPhases(f){
+    $('#phases').innerHTML=PH.filter(function(p){return f==='all'||p.s===f}).map(function(p){
+      return '<details'+(p.s==='next'?' open':'')+'><summary><span class="num">'+p.n+'</span><span class="t">'+p.t+'</span><span class="pill '+SL[p.s][0]+'">'+SL[p.s][1]+'</span></summary>'+
+        '<div class="body"><dl class="kv"><dt>Done when</dt><dd>'+p.d+'</dd><dt>Verified by</dt><dd>'+p.v+'</dd></dl></div></details>';
+    }).join('');
+  }
+  renderPhases('all');
+  $$('#planFilter button').forEach(function(b){b.addEventListener('click',function(){
+    $$('#planFilter button').forEach(function(x){x.setAttribute('aria-pressed',x===b)}); renderPhases(b.dataset.f);
+  })});
+
+  var ST=[
+    {n:'Scan',s:'done',d:'Walks the Superset repo, filtering by extension (.py .md .mdx .js .jsx .ts .tsx) and skipping node_modules, .git and similar.'},
+    {n:'Load',s:'warn',d:'Reads each file into a record. Bug: it mints a fresh UUID every run, so re-indexing duplicates chunks. Fixed in Phase 4.'},
+    {n:'Chunk',s:'warn',d:'Markdown splits on headers; code uses an 80-line window with 15-line overlap, which cuts through function bodies. Fixed in Phase 2.'},
+    {n:'Embed',s:'done',d:'all-MiniLM-L6-v2 in batches of 64, normalized, upserted into ChromaDB. The model loads once, not per query.'},
+    {n:'Retrieve',s:'warn',d:'Vector search only, so it can miss exact function names and error strings. Hybrid BM25 + vector comes in Phase 3.'},
+    {n:'Re-rank',s:'todo',d:'Not built. A cross-encoder will re-rank the top 20 down to the top 5 in Phase 3.'},
+    {n:'Generate',s:'bad',d:'Local Qwen 1.5B takes 50–60 s per answer on CPU and does not reliably follow the citation format. Phase 5 swaps in an API model.'},
+    {n:'Serve',s:'done',d:'FastAPI /query and /search work end to end. Next.js shows the answer, sources and errors. CORS is an explicit allowlist.'}
+  ];
+  var PC={done:['p-done','working'],warn:['p-warn','has a known flaw'],todo:['p-todo','not built'],bad:['p-bad','too slow']};
+  $('#rail').innerHTML=ST.map(function(x,i){return '<button class="step" data-i="'+i+'" aria-pressed="'+(i===4)+'"><b>'+x.n+'</b><span class="pill '+PC[x.s][0]+'">'+PC[x.s][1]+'</span></button>'}).join('');
+  function showStep(i){
+    $$('#rail .step').forEach(function(b,j){b.setAttribute('aria-pressed',j===i)});
+    $('#stepdetail').innerHTML='<b>'+ST[i].n+'.</b> '+ST[i].d;
+  }
+  $$('#rail .step').forEach(function(b){b.addEventListener('click',function(){showStep(+b.dataset.i)})});
+  showStep(4);
+
+  var TB={
+    documents:{p:'Phase 4',w:'Every ingested file. Makes hash-based incremental ingestion possible.',c:[['id','TEXT PK','Stable id derived from path, not a fresh UUID'],['path','TEXT UNIQUE','Source file path'],['source_type','TEXT','code, markdown; later pdf, docx'],['language','TEXT','Optional'],['content_hash','TEXT','SHA-256 of the file. Indexed.'],['chunk_count','INTEGER','Default 0'],['first_indexed_at','TEXT','ISO 8601'],['last_indexed_at','TEXT','ISO 8601']]},
+    jobs:{p:'Phase 4',w:'One row per background upload, so the API can reply with a job id and the UI can poll.',c:[['id','TEXT PK','Job id returned by upload'],['document_id','TEXT FK','References documents; set null on delete'],['status','TEXT','queued, processing, done or failed'],['error','TEXT','Failure message, if any'],['created_at','TEXT','ISO 8601'],['finished_at','TEXT','ISO 8601, null until done']]},
+    sessions:{p:'Phase 6',w:'One row per conversation.',c:[['id','TEXT PK','Session id'],['created_at','TEXT','ISO 8601'],['last_active_at','TEXT','ISO 8601']]},
+    messages:{p:'Phase 6',w:'Each turn in a conversation.',c:[['id','INTEGER PK','Autoincrement'],['session_id','TEXT FK','References sessions; cascade delete. Indexed.'],['role','TEXT','user or assistant'],['content','TEXT','Message text'],['sources_json','TEXT','Assistant turns only: the source cards shown with that answer'],['created_at','TEXT','ISO 8601']]},
+    feedback:{p:'Phase 9',w:'Thumbs up or down on an assistant message.',c:[['id','INTEGER PK','Autoincrement'],['message_id','INTEGER FK','References messages; cascade delete'],['rating','INTEGER','-1 or 1'],['created_at','TEXT','ISO 8601']]},
+    api_keys:{p:'Phase 7',w:'Access keys. The raw key is never stored.',c:[['id','TEXT PK','Key id'],['key_hash','TEXT UNIQUE','Hash of the key'],['label','TEXT','Optional name'],['created_at','TEXT','ISO 8601'],['revoked_at','TEXT','Null while active']]}
+  };
+  function showTbl(k){
+    var t=TB[k];
+    $$('#tblpick button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.k===k)});
+    $('#tbl').innerHTML='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 class="mono" style="margin:0">'+k+'</h3><span class="pill p-todo">'+t.p+'</span></div><p style="margin:6px 0 12px">'+t.w+'</p>'+
+      '<div class="scroll"><table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>'+
+      t.c.map(function(r){return '<tr><td><code>'+r[0]+'</code></td><td>'+r[1]+'</td><td>'+r[2]+'</td></tr>'}).join('')+'</tbody></table></div>';
+  }
+  $('#tblpick').innerHTML=Object.keys(TB).map(function(k){return '<button data-k="'+k+'" aria-pressed="false">'+k+'</button>'}).join('');
+  $$('#tblpick button').forEach(function(b){b.addEventListener('click',function(){showTbl(b.dataset.k)})});
+  showTbl('documents');
+
+  var SW=[['#09090b','Page background','zinc-950'],['#18181b','Card / panel','zinc-900'],['#27272a','Default border','zinc-800'],['#3f3f46','Input border','zinc-700'],['#f4f4f5','Primary text','zinc-100'],['#a1a1aa','Muted text','zinc-400'],['#71717a','Muted text, small','zinc-500'],['#ffffff','Primary button fill','white on zinc-950 text'],['#450a0a','Error fill (at 40%)','red-950/40'],['#7f1d1d','Error border','red-900'],['#fca5a5','Error text','red-300']];
+  $('#swatches').innerHTML=SW.map(function(s){return '<div class="sw"><i style="background:'+s[0]+'"></i><div><b>'+s[1]+'</b><span>'+s[2]+' · '+s[0]+'</span></div></div>'}).join('');
+
+  var NOTE={
+    empty:'Only the input is visible. Answer and source panels are conditionally rendered, not hidden with CSS.',
+    loading:'The button text changes, a helper caption appears, and the button is disabled. This state persists on purpose: generation takes 50–60 s locally, and a disappearing toast would read as broken.',
+    error:'A red panel renders above the answer area with the text from the failed request. Inside a scrolling chat thread this becomes an inline failed message bubble.',
+    success:'Answer and source cards render. No auto-scroll yet; worth revisiting once long answers push the input off screen.'
+  };
+  function mock(state){
+    var btn=state==='loading'?'<div class="m-btn off">Searching Superset and generating answer…</div><small style="color:#a1a1aa;font-size:12px">Sentinel is retrieving relevant Superset code/docs and generating a grounded answer.</small>':
+      (state==='empty'?'<div class="m-btn off">Ask Sentinel</div>':'<div class="m-btn">Ask Sentinel</div>');
+    var q=state==='empty'?'Ask about Apache Superset…':'How does the chart data cache work?';
+    var h='<div><h4 style="font-size:22px">Sentinel</h4><small style="font-size:12px;color:#a1a1aa">AI assistant for the Apache Superset codebase.</small></div>'+
+      '<div class="m-card"><div class="m-input">'+q+'</div>'+btn+'</div>';
+    if(state==='error') h+='<div class="m-err">API error: 500</div>';
+    if(state==='success') h+='<div class="m-card"><h4>Answer</h4><div style="font-size:13px;color:#e4e4e7;line-height:1.7">Chart data is cached per query context and keyed by its hash [S1]. Cache timeouts fall back to the datasource default [S2].</div></div>'+
+      '<div class="m-card"><h4>Sources</h4><div class="m-src"><div style="color:#f4f4f5;font-weight:500;font-size:13px">S1: cache.py</div><small>python · distance: 0.3120</small><div style="margin-top:4px;word-break:break-all">superset/utils/cache.py</div></div></div>';
+    $('#mock').innerHTML=h; $('#stateNote').textContent=NOTE[state];
+  }
+  $$('#stateSeg button').forEach(function(b){b.addEventListener('click',function(){
+    $$('#stateSeg button').forEach(function(x){x.setAttribute('aria-pressed',x===b)}); mock(b.dataset.state);
+  })});
+  mock('empty');
+
+  $$('[data-flow]').forEach(function(b){b.addEventListener('click',function(){
+    $$('[data-flow]').forEach(function(x){x.setAttribute('aria-pressed',x===b)});
+    $('#flow-now').hidden=b.dataset.flow!=='now'; $('#flow-target').hidden=b.dataset.flow!=='target';
+  })});
+
+  var TABS=$$('nav.tabs button'), PAGES=$$('section.page');
+  function go(id,push){
+    if(!PAGES.some(function(p){return p.id===id})) id='overview';
+    PAGES.forEach(function(p){p.hidden=p.id!==id});
+    TABS.forEach(function(t){t.setAttribute('aria-selected',t.dataset.tab===id)});
+    if(push){try{history.replaceState(null,'','#'+id)}catch(e){}}
+    window.scrollTo(0,0);
+  }
+  TABS.forEach(function(t){t.addEventListener('click',function(){go(t.dataset.tab,true)})});
+  $$('[data-goto]').forEach(function(a){a.addEventListener('click',function(e){e.preventDefault();go(a.dataset.goto,true)})});
+  window.addEventListener('hashchange',function(){go(location.hash.slice(1),false)});
+  go(location.hash.slice(1)||'overview',false);
+})();
+</script>
