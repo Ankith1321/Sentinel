@@ -53,7 +53,7 @@ Scale in current use:
 ## 6. States
 
 - **Empty:** only the input is visible — answer/source panels are conditionally rendered, not hidden with CSS, confirmed in code.
-- **Loading:** button text changes, helper caption appears, button disabled, textarea stays editable. This state is intentionally persistent (not a toast) because generation currently takes 50-60 seconds on the local model — see [`02_TRD.md`](02_TRD.md) — and a state that disappears before the request resolves would read as broken.
+- **Loading:** button text changes, helper caption appears, button disabled, textarea stays editable (a deliberate exception to rule 8.7 in `docs/CONTEXT.md`, so a user can draft the next question during a 60-second wait; the submit button is what blocks double-sends). Known defect: the helper caption is currently a `<p>` nested inside the `<button>`, which is invalid HTML and should move out of the button. This state is intentionally persistent (not a toast) because generation currently takes 50-60 seconds on the local model — see [`02_TRD.md`](02_TRD.md) — and a state that disappears before the request resolves would read as broken.
 - **Error:** red panel renders above the answer area, error text from the caught fetch failure.
 - **Success:** answer panel and source cards render, no auto-scroll — worth reconsidering once answers routinely run long enough to push the input off-screen.
 

@@ -1,5 +1,7 @@
 # SENTINEL — Enterprise RAG Pipeline: Full Project Context
 
+> **Partly historical.** Sections 6 (bug table), 9 (roadmap) and 11 (current-state notes) predate the Phase 1 fixes and are superseded by `docs/06_IMPLEMENTATION_PLAN.md`. Sections 5, 7 and 8 (rules) are still active.
+
 > Upload this file at the start of every Claude chat session.
 > This is the single source of truth for the project. Every rule here is mandatory.
 

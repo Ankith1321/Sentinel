@@ -32,10 +32,12 @@ Engineers working in a large, mixed-language codebase lose real time answering q
 
 These need to be measured against a real eval set, not asserted. No eval set exists yet — building one is the single highest-priority item that isn't already done, because every quality claim elsewhere in this project (chunking is better, hybrid search improved retrieval, etc.) is currently unfalsifiable without it.
 
-- **Retrieval hit-rate:** % of a fixed 30-40 question eval set where the correct source file appears in the top-k retrieved chunks.
-- **Groundedness:** % of answer sentences that are actually supported by their cited source — checked manually against the eval set until an automated grounding check exists.
-- **p95 end-to-end latency** for `/query`.
-- **Zero uncited factual claims** in the answer — already enforced by the prompt's instructions, not yet independently measured.
+Targets below are provisional. Replace them with firm numbers once the baseline eval run exists; a target set before any measurement is a guess.
+
+- **Retrieval hit-rate (hit@5):** % of a fixed 30-40 question eval set where the correct source file appears in the top-5 retrieved chunks. Provisional target: ≥ 70% after Phase 3, and never lower than the Phase 1 baseline.
+- **Groundedness:** % of answer sentences that are actually supported by their cited source — checked manually against the eval set until an automated grounding check exists. Provisional target: ≥ 90%.
+- **p95 end-to-end latency** for `/query`. Provisional target: under 10 seconds on the API-based LLM path. The local-model path is exempt (see `02_TRD.md` section 4).
+- **Uncited factual claims:** target is zero. The prompt asks for `[S1]`-style citations on every claim, but a 1.5B local model does not reliably comply, so this is requested, not enforced, and has not been measured yet.
 
 ## 6. Must-have vs. nice-to-have
 
@@ -43,7 +45,7 @@ These need to be measured against a real eval set, not asserted. No eval set exi
 - `/query` returns a correct, cited answer over HTTP — **done**, fixed and verified live.
 - Retrieval doesn't reload the embedding model per call — **done**.
 - Incremental ingestion: a changed or new file updates the index without duplicating existing entries — **not done** (Implementation Plan Phase 4).
-- An eval set exists and has been run at least once, producing a real number — **not done** (Phase 9, but see the sequencing note in the Implementation Plan — this needs to move earlier).
+- An eval set exists and has been run at least once, producing a real number — **not done** (Implementation Plan Phase 1.5, the next item to build).
 - Basic auth on anything reachable outside localhost — **not done** (Phase 7).
 
 **Should-have:**

@@ -31,7 +31,7 @@ flowchart TD
     NewSession --> Chat[Chat thread screen]
     LoadHistory --> Chat
     Chat --> Ask[Type + send question]
-    Ask --> Stream["GET /query/stream - tokens render as they arrive"]
+    Ask --> Stream["POST /query/stream - tokens render as they arrive"]
     Stream --> Feedback[Thumbs up / down on the answer]
     Chat --> Upload[Open upload screen]
     Upload --> PostDoc["POST /documents/upload"]
@@ -46,6 +46,7 @@ flowchart TD
 
 - **Entry:** app load. Resumes the last active session from local storage if one exists; otherwise creates a new one via `POST /sessions`.
 - **Shows:** full message history, user and assistant turns interleaved. Each assistant turn carries its own source cards attached to that specific turn — not one global source panel like today, since multiple turns will have different sources.
+- **Streaming transport:** `POST /query/stream` consumed with `fetch` and a streamed body, not `EventSource`. `EventSource` cannot send the `X-API-Key` header that Phase 7 requires, and it only supports GET.
 - **Top-k control:** a slider, 1-15. No backend change required — `QueryRequest.top_k` already has that exact `ge`/`le` constraint, this just exposes it in the UI.
 - **Error handling:** once there's a scrolling history, an error must render as a failed message bubble inline in the thread, not a page-level banner. Today's page-level error panel is correct for a single-Q&A screen and stops being correct the moment there's a history to scroll past it.
 
@@ -53,7 +54,7 @@ flowchart TD
 
 - **Entry:** explicit navigation from the chat screen — never automatic, never blocking the chat flow.
 - **Accepts:** `.py`, `.md`, `.pdf`, `.docx`, `.txt` via drag-and-drop or file picker.
-- **Submits to** `POST /documents/upload`, which per the TRD and Implementation Plan responds immediately with a job id (background task, not a blocking request). The UI shows a "processing" state and polls or listens on the session, rather than holding a blocking spinner — ingesting a real file is not fast, and rule 8.1 in `docs/CONTEXT.md` already mandates the backend never blocks on it. The frontend flow has to honor that, not fight it with a spinner that implies "almost done."
+- **Submits to** `POST /documents/upload`, which per the TRD and Implementation Plan responds immediately with a job id (background task, not a blocking request). The UI shows a "processing" state and polls `GET /jobs/{id}` (the `jobs` table in the schema doc), rather than holding a blocking spinner — ingesting a real file is not fast, and rule 8.1 in `docs/CONTEXT.md` already mandates the backend never blocks on it. The frontend flow has to honor that, not fight it with a spinner that implies "almost done."
 
 ### Session history
 

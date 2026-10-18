@@ -31,8 +31,8 @@ Both halves currently run as a single Python process each (a CLI script for buil
 
 ## 4. Non-functional requirements
 
-- **Latency — retrieval:** ~35-40ms per call once the embedding model singleton is warm. Measured directly this session (two back-to-back `retrieve()` calls against a live Chroma collection).
-- **Latency — generation:** roughly 50-60 seconds observed for a single ~220-token answer from the local Qwen 1.5B model on this CPU-only dev machine (no CUDA). This is not acceptable for an interactive product and is the direct, measured justification for Phase 5 (API-based LLM as the default path) — not a hypothetical concern.
+- **Latency — retrieval:** ~35-40ms per call once the embedding model singleton is warm. Measured during Phase 1 verification on the CPU-only dev machine (two back-to-back `retrieve()` calls against a live Chroma collection). Re-measure after Phase 2/3, since chunk count and re-ranking will change it.
+- **Latency — generation:** roughly 50-60 seconds observed during Phase 1 verification for a single ~220-token answer from the local Qwen 1.5B model on the CPU-only dev machine (no CUDA). This is not acceptable for an interactive product and is the direct, measured justification for Phase 5 (API-based LLM as the default path) — not a hypothetical concern.
 - **Throughput:** not a current design target. This is a single-user local/demo deployment; no concurrency or load testing has been done.
 - **Availability:** no uptime target exists yet. Revisit once an Azure deployment is live and has real traffic.
 - **Data freshness:** currently none — the index only reflects whatever was on disk the last time someone manually ran the two ingestion scripts. See [`06_IMPLEMENTATION_PLAN.md`](06_IMPLEMENTATION_PLAN.md) Phase 4.
@@ -46,7 +46,7 @@ Both halves currently run as a single Python process each (a CLI script for buil
 
 ## 6. Constraints
 
-- **CPU-only dev hardware, no CUDA.** Every model-loading change must be verified to actually run here before being called done — this session's `dtype=torch.float16` change was checked against a real matmul test and a real generation run specifically because float16 has a history of missing CPU kernels on older PyTorch builds. Don't assume a GPU-oriented fix "just works" on CPU; test it.
+- **CPU-only dev hardware, no CUDA.** Every model-loading change must be verified to actually run here before being called done — the Phase 1 `dtype=torch.float16` change was checked against a real matmul test and a real generation run specifically because float16 has a history of missing CPU kernels on older PyTorch builds. Don't assume a GPU-oriented fix "just works" on CPU; test it.
 - **ChromaDB has no built-in horizontal scaling.** Fine up to roughly hundreds of thousands of chunks; the decision log already anticipates migrating past that point rather than treating it as a surprise.
 
 ## 7. Open technical risks
