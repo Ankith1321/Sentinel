@@ -155,12 +155,12 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
 
 <!-- OVERVIEW -->
 <section class="page" id="overview">
-  <p class="lede">A user asks a question. Sentinel finds the relevant source chunks, hands only those to an LLM, and returns an answer with citations. It works end to end today, but it is slow and nobody has measured how good it is yet.</p>
+  <p class="lede">A user asks a question. Sentinel finds the relevant source chunks, hands only those to an LLM, and returns an answer with citations. It works end to end and is measured: the right file now lands in the top 5 results 67.5% of the time, up from 40%.</p>
 
   <div class="grid g3">
-    <div class="card stat"><span>Retrieval latency</span><b>35–40 ms</b><small>warm model, measured in Phase 1</small></div>
-    <div class="card stat"><span>Answer generation (local model)</span><b>50–60 s</b><small>CPU only, ~220 tokens. Too slow to demo</small></div>
-    <div class="card stat"><span>Retrieval hit@5</span><b>not measured</b><small>no eval set exists yet</small></div>
+    <div class="card stat"><span>Retrieval hit@5 (40-question eval)</span><b>67.5%</b><small>was 40% before AST chunks and hybrid search; hit@10 is 77.5%</small></div>
+    <div class="card stat"><span>Answer generation (local model)</span><b>~3 s</b><small>on the RTX 4060; it took 50–60 s on CPU. The Claude API path is built but not yet run with a key</small></div>
+    <div class="card stat"><span>Tests</span><b>48 passing</b><small>unit and API tests, plus lint and a frontend build</small></div>
   </div>
 
   <div class="grid">
@@ -173,7 +173,7 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   <div class="grid">
     <h2>Where the project is</h2>
     <div class="track" id="trackOverview" aria-hidden="true"></div>
-    <div class="callout"><b>You are here: Phase 1.5.</b> Phase 1 (fix what's broken) is finished and verified live. The next job is a 30–40 question eval set, because chunking and hybrid search can't be judged without a baseline number. <a href="#plan" data-goto="plan" style="color:var(--accent)">See the full plan →</a></div>
+    <div class="callout"><b>You are here: Phase 10.</b> Phases 1–9 are built and verified. What remains: add an Anthropic API key (answers will cite sources properly), a visual pass in a browser, building the Docker images, and deploying to Azure. <a href="#plan" data-goto="plan" style="color:var(--accent)">See the full plan →</a></div>
   </div>
 
   <div class="grid g2">
@@ -212,10 +212,10 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
     <div class="scroll"><table>
       <thead><tr><th>Metric</th><th>What it measures</th><th>Provisional target</th><th>Today</th></tr></thead>
       <tbody>
-        <tr><td><b>Retrieval hit@5</b></td><td>% of eval questions where the right file is in the top 5 chunks</td><td>≥ 70% after Phase 3, never below baseline</td><td><span class="pill p-todo">not measured</span></td></tr>
+        <tr><td><b>Retrieval hit@5</b></td><td>% of eval questions where the right file is in the top 5 chunks</td><td>≥ 70%</td><td><span class="pill p-warn">67.5% (was 40%)</span></td></tr>
         <tr><td><b>Groundedness</b></td><td>% of answer sentences supported by their cited source</td><td>≥ 90%</td><td><span class="pill p-todo">not measured</span></td></tr>
-        <tr><td><b>p95 latency</b> /query</td><td>End-to-end time for the slowest 5% of requests</td><td>&lt; 10 s on the API-LLM path</td><td><span class="pill p-bad">50–60 s local</span></td></tr>
-        <tr><td><b>Uncited claims</b></td><td>Factual statements with no [S1]-style citation</td><td>0</td><td><span class="pill p-warn">requested, not enforced</span></td></tr>
+        <tr><td><b>p95 latency</b> /query</td><td>End-to-end time for the slowest 5% of requests</td><td>&lt; 10 s on the API-LLM path</td><td><span class="pill p-warn">3.4 s local GPU (1 query); API untested</span></td></tr>
+        <tr><td><b>Uncited claims</b></td><td>Factual statements with no [S1]-style citation</td><td>0</td><td><span class="pill p-warn">local model often skips them</span></td></tr>
       </tbody></table></div>
   </div>
 
@@ -225,16 +225,16 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
       <div class="col"><h3><span class="pill p-done">Must-have</span></h3><ul>
         <li><b>/query returns a cited answer</b><span class="pill p-done">done</span></li>
         <li><b>Embedding model loads once</b><span class="pill p-done">done</span></li>
-        <li><b>Incremental ingestion, no duplicates</b><span class="pill p-todo">Phase 4</span></li>
-        <li><b>Eval set run at least once</b><span class="pill p-next">Phase 1.5 · next</span></li>
-        <li><b>Auth outside localhost</b><span class="pill p-todo">Phase 7</span></li></ul></div>
+        <li><b>Incremental ingestion, no duplicates</b><span class="pill p-done">done</span></li>
+        <li><b>Eval set run at least once</b><span class="pill p-done">done</span></li>
+        <li><b>Auth outside localhost</b><span class="pill p-done">done</span></li></ul></div>
       <div class="col"><h3><span class="pill p-warn">Should-have</span></h3><ul>
-        <li><b>Hybrid retrieval (vector + BM25)</b><span class="pill p-todo">Phase 3</span></li>
-        <li><b>AST-aware Python chunking</b><span class="pill p-todo">Phase 2</span></li>
-        <li><b>Streaming responses</b><span class="pill p-todo">Phase 5</span></li></ul></div>
+        <li><b>Hybrid retrieval (vector + BM25)</b><span class="pill p-done">done</span></li>
+        <li><b>AST-aware Python chunking</b><span class="pill p-done">done</span></li>
+        <li><b>Streaming responses</b><span class="pill p-done">done</span></li></ul></div>
       <div class="col"><h3><span class="pill p-todo">Could-have</span></h3><ul>
-        <li><b>Multi-turn memory</b><span class="pill p-todo">Phase 6</span></li>
-        <li><b>Drag-and-drop upload UI</b><span class="pill p-todo">Phase 8</span></li>
+        <li><b>Multi-turn memory</b><span class="pill p-done">done</span></li>
+        <li><b>Drag-and-drop upload UI</b><span class="pill p-done">done</span></li>
         <li><b>Code-vs-docs query classifier (PyTorch)</b><span>Lowest priority, do last</span></li></ul></div>
     </div>
   </div>
@@ -279,11 +279,11 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   <div class="grid">
     <h2>Non-functional requirements</h2>
     <div class="grid g3">
-      <div class="card stat"><span>Retrieval latency</span><b>35–40 ms</b><small>Phase 1, CPU dev machine. Re-measure after Phase 2/3.</small></div>
-      <div class="card stat"><span>Generation latency</span><b>50–60 s</b><small>Phase 1, local Qwen 1.5B, ~220 tokens. This is the case for Phase 5.</small></div>
+      <div class="card stat"><span>Retrieval latency</span><b>~365 ms</b><small>hybrid over 88k chunks, one logged query. Needs more samples.</small></div>
+      <div class="card stat"><span>Generation latency</span><b>~3 s</b><small>local Qwen 1.5B on the RTX 4060. It took 50–60 s on CPU.</small></div>
       <div class="card stat"><span>Throughput / uptime</span><b>no target</b><small>Single-user demo. No load testing yet.</small></div>
     </div>
-    <div class="callout warn"><b>Data freshness is zero today.</b> The index only reflects whatever was on disk the last time someone ran the two ingestion scripts by hand (fixed in Phase 4).</div>
+    <div class="callout warn"><b>Data freshness is still manual for the Superset corpus:</b> re-run the chunker and build script after updating the checkout (stale chunks are cleaned up). Uploaded files index themselves in the background.</div>
   </div>
 
   <div class="grid g2">
@@ -291,12 +291,12 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
       <li><span class="pill p-done">verified</span> <code>.env</code> is gitignored</li>
       <li><span class="pill p-done">verified</span> CORS is an explicit allowlist, never a wildcard</li>
       <li><span class="pill p-done">verified</span> <code>min_length</code> and <code>ge/le</code> on <code>QueryRequest</code></li>
-      <li><span class="pill p-bad">missing</span> Auth. Required before any public deployment (Phase 7)</li></ul></div>
+      <li><span class="pill p-done">verified</span> <code>X-API-Key</code> on every route except <code>/health</code>; keys stored hashed</li></ul></div>
     <div class="card"><h3>Constraints and open risks</h3><ul>
-      <li>CPU-only dev machine. Test every model-loading change here; float16 can lack CPU kernels.</li>
+      <li>Two runtimes: a CUDA dev machine and CPU-only containers. Test model-loading changes on both.</li>
       <li>ChromaDB has no horizontal scaling.</li>
-      <li><code>loader.py</code> mints a fresh UUID per run, so re-ingestion duplicates chunks.</li>
-      <li>Local generation latency is only fit for offline batch eval.</li></ul></div>
+      <li>Docker images and CI are written but have not been built or run yet.</li>
+      <li>The real Anthropic API path has not been exercised without a key.</li></ul></div>
   </div>
 </section>
 
@@ -398,11 +398,11 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
 <!-- SCHEMA -->
 <section class="page" id="schema" hidden>
   <div class="grid"><span class="eyebrow">Backend schema</span><h2>ChromaDB keeps searching. A new SQLite file keeps everything else.</h2>
-  <p class="lede" style="font-size:16px">Nothing here is built yet. It is designed ahead of Phases 4 and 6 so they aren't improvised. Migrate to Postgres only if it ever runs as more than one instance.</p></div>
+  <p class="lede" style="font-size:16px">Built in <code>backend/app/db.py</code> (SQLite, <code>data/sentinel.db</code>). Migrate to Postgres only if it ever runs as more than one instance.</p></div>
 
   <div class="grid g2">
     <div class="card"><span class="pill p-done">exists today</span><h3 style="margin-top:8px">ChromaDB</h3><p>Vectors, chunk text, and chunk metadata (<code>source_id</code>, <code>path</code>, <code>language</code>, <code>title</code>, <code>chunk_index</code>). Anything that needs similarity search.</p></div>
-    <div class="card"><span class="pill p-todo">to build</span><h3 style="margin-top:8px">SQLite</h3><p>Anything relational: ingested-document tracking, sessions, messages, feedback, jobs, API keys.</p></div>
+    <div class="card"><span class="pill p-done">built</span><h3 style="margin-top:8px">SQLite</h3><p>Anything relational: ingested-document tracking, sessions, messages, feedback, jobs, API keys.</p></div>
   </div>
 
   <div class="grid"><h2>Tables</h2>
@@ -433,7 +433,7 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
 
 <!-- PLAN -->
 <section class="page" id="plan" hidden>
-  <div class="grid"><span class="eyebrow">Implementation plan</span><h2>Eleven phases, each with a definition of done you can check.</h2>
+  <div class="grid"><span class="eyebrow">Implementation plan</span><h2>Eleven phases: ten built and verified, deployment still to do.</h2>
   <p class="lede" style="font-size:16px">This is the current source of truth for what "done" means. The old roadmap in CONTEXT.md is history.</p></div>
 
   <div class="track" id="trackPlan" aria-hidden="true"></div>
@@ -453,17 +453,17 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 
   var PH=[
-    {n:'1',t:'Fix what\'s broken',s:'done',d:'/query returns a cited answer over real HTTP. The embedding model is a singleton (two calls reuse it, ~35–40 ms). No dead files or unreachable code. The frontend renders success and error states. Verified live, not just read.',v:'Commits 74b61af to 7fd53a3 on the ankith branch.'},
-    {n:'1.5',t:'Minimal eval set',s:'next',d:'eval/qa_set.json holds 30–40 questions (about 20 code, 10 docs, 5–10 exact-identifier lookups) with expected paths chosen from the Superset repo itself, not from retriever output. eval/run_eval.py reports hit@5, hit@1 and MRR, lists every miss, and writes a timestamped result file. Run once, baseline recorded in the PRD.',v:'A baseline hit@5 number exists.'},
-    {n:'2',t:'Chunking upgrade',s:'todo',d:'Python chunks at function and class boundaries using ast. Chunk size capped in tokens (512 target, 1024 max). Chunks under 20 tokens rejected as noise.',v:'Re-run the eval set; hit@5 must not regress.'},
-    {n:'3',t:'Retrieval upgrade',s:'todo',d:'BM25 runs beside Chroma. Reciprocal Rank Fusion merges both result sets. A cross-encoder re-ranks the top 20 to the top 5. Metadata pre-filters (language, path prefix) work on /search and /query.',v:'Same eval set; hit@5 must go up. It does not ship without that.'},
-    {n:'4',t:'Ingestion API',s:'todo',d:'POST /documents/upload computes SHA-256, checks the documents table, returns a job id recorded in the jobs table, and processes in a BackgroundTasks job. Re-uploading an unchanged file is a no-op. GET /documents, GET /jobs/{id} and DELETE /documents/{id} work on real data.',v:'Unchanged re-upload verified as a no-op.'},
-    {n:'5',t:'LLM upgrade',s:'todo',d:'An API model (Claude Haiku or GPT-4o-mini) is the default, gated behind an API key env var. Local Qwen stays as a documented fallback. POST /query/stream streams tokens over SSE. Context is trimmed to a token budget, never cut mid-chunk.',v:'p95 /query under the target on the API path.'},
-    {n:'6',t:'Conversation memory',s:'todo',d:'sessions and messages tables are live. POST /sessions and GET /sessions/{id} work. The last 10 turns go into the prompt. Follow-up questions are rewritten to be self-contained before embedding.',v:'A real manual multi-turn test, not one question run twice.'},
-    {n:'7',t:'Authentication',s:'todo',d:'Every route except /health rejects a missing or invalid X-API-Key. Keys are stored hashed in api_keys and shown once. A minimal admin path generates and revokes keys.',v:'Request without a key gets rejected on every route.'},
-    {n:'8',t:'Frontend upgrade',s:'todo',d:'Matches the App Flow exactly: chat thread, streaming render, upload screen, top-k slider, feedback buttons. Each is wired to a real, tested endpoint. No UI ships ahead of its endpoint.',v:'Walk the App Flow end to end.'},
-    {n:'9',t:'Observability',s:'todo',d:'Every query is logged with its text, retrieved chunk ids and latency in ms. Feedback persists to the feedback table. The full eval suite produces one trackable hit-rate number.',v:'Log line exists for each query.'},
-    {n:'10',t:'Deploy and CI/CD',s:'todo',d:'Backend and frontend run as two containers on Azure Container Apps at a public URL, behind the Phase 7 key check. GitHub Actions lints, runs chunker and retriever tests, builds images and pushes them. The README links the live demo and the eval numbers.',v:'A reviewer can open the link and get a cited answer.'}
+    {n:'1',t:'Fix what\'s broken',s:'done',d:'/query returns a cited answer over real HTTP, the embedding model is a singleton, no dead code, the frontend renders success and error states.',v:'Verified live in the first working session.'},
+    {n:'1.5',t:'Minimal eval set',s:'done',d:'40 questions with expected paths chosen from the Superset repo; a runner reporting hit@1, hit@5, hit@10 and MRR per question type and listing every miss.',v:'Baseline recorded: hit@5 40%, MRR 0.267.'},
+    {n:'2',t:'Chunking upgrade',s:'done',d:'AST-based Python chunks, TS/JS and Markdown boundaries, token-sized (200, because the embedder window is 256), file path on every chunk, license boilerplate stripped, noise dropped.',v:'MiniLM vector hit@5 went 40% to 50% on the same eval.'},
+    {n:'3',t:'Retrieval upgrade',s:'done',d:'BM25 + vector with Reciprocal Rank Fusion, language/path filters, test-file demotion, bge-small embeddings. Cross-encoder built but off: it did not help.',v:'Default hybrid: hit@5 67.5%, hit@10 77.5%, MRR 0.506 (was 40%, 50%, 0.267).'},
+    {n:'4',t:'Ingestion API',s:'done',d:'Upload returns a job id at once and indexes in the background; unchanged files are skipped by SHA-256; delete removes chunks. GET /documents, GET /jobs/{id}, DELETE /documents/{id}.',v:'Run live: indexed in ~10 s, re-upload was a no-op, new content retrievable, delete worked. PDF/DOCX not tried with real files.'},
+    {n:'5',t:'LLM upgrade',s:'done',d:'Anthropic provider (default Claude Haiku) with local Qwen fallback, streaming over SSE, whole-chunk context budget. Not yet run against the real API.',v:'Local path verified live (~3 s on GPU). Anthropic path covered by tests with a fake client only.'},
+    {n:'6',t:'Conversation memory',s:'done',d:'Sessions and messages stored with sources; last 10 turns go in the prompt; follow-ups are rewritten into standalone queries.',v:'Live two-turn test: "it" became "the BaseDAO class" before retrieval.'},
+    {n:'7',t:'Authentication',s:'done',d:'X-API-Key on every route except /health, keys hashed, admin routes for create/list/revoke, proxy keeps the key off the browser.',v:'401 without a key on every protected route; revoked keys stop working.'},
+    {n:'8',t:'Frontend upgrade',s:'done',d:'Streaming chat with citation chips and source cards, sessions sidebar, sources slider, feedback buttons, inline errors, drag-and-drop Documents page.',v:'Passes tsc, eslint and next build; proxy tested with curl. Not yet reviewed in a browser.'},
+    {n:'9',t:'Observability',s:'done',d:'Every query stored with retrieved ids and timings; feedback stored; GET /admin/stats shows volume, latency and thumbs-up ratio.',v:'Stats endpoint returns live data. No stats page in the UI.'},
+    {n:'10',t:'Deploy and CI/CD',s:'next',d:'CI workflow, backend and frontend Dockerfiles and compose are written. Still to do: build the images, deploy to Azure Container Apps, and add an Anthropic key.',v:'Needs Docker running, an Azure subscription and registry secrets.'}
   ];
   var SL={done:['p-done','done'],next:['p-next','next'],todo:['p-todo','later']};
 
@@ -485,13 +485,13 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
 
   var ST=[
     {n:'Scan',s:'done',d:'Walks the Superset repo, filtering by extension (.py .md .mdx .js .jsx .ts .tsx) and skipping node_modules, .git and similar.'},
-    {n:'Load',s:'warn',d:'Reads each file into a record. Bug: it mints a fresh UUID every run, so re-indexing duplicates chunks. Fixed in Phase 4.'},
-    {n:'Chunk',s:'warn',d:'Markdown splits on headers; code uses an 80-line window with 15-line overlap, which cuts through function bodies. Fixed in Phase 2.'},
-    {n:'Embed',s:'done',d:'all-MiniLM-L6-v2 in batches of 64, normalized, upserted into ChromaDB. The model loads once, not per query.'},
-    {n:'Retrieve',s:'warn',d:'Vector search only, so it can miss exact function names and error strings. Hybrid BM25 + vector comes in Phase 3.'},
-    {n:'Re-rank',s:'todo',d:'Not built. A cross-encoder will re-rank the top 20 down to the top 5 in Phase 3.'},
-    {n:'Generate',s:'bad',d:'Local Qwen 1.5B takes 50–60 s per answer on CPU and does not reliably follow the citation format. Phase 5 swaps in an API model.'},
-    {n:'Serve',s:'done',d:'FastAPI /query and /search work end to end. Next.js shows the answer, sources and errors. CORS is an explicit allowlist.'}
+    {n:'Load',s:'done',d:'Reads each file into a record with a stable id (hash of its relative path) and a SHA-256 content hash, so re-indexing never duplicates chunks.'},
+    {n:'Chunk',s:'done',d:'Python splits at function and class boundaries with ast, TS/JS at top-level declarations, Markdown at headings. About 200 tokens each, every chunk starts with its file path, license boilerplate removed. 88,144 chunks.'},
+    {n:'Embed',s:'done',d:'bge-small-en-v1.5 (it beat MiniLM: vector hit@5 70% vs 50%), normalized, upserted into ChromaDB. Runs on the GPU in about 5 minutes for the full corpus. The model loads once.'},
+    {n:'Retrieve',s:'done',d:'Vector search plus BM25 keyword search, merged with Reciprocal Rank Fusion, with test files down-weighted. Best MRR (0.506) of everything tried. Still misses 13 of 40 broad questions.'},
+    {n:'Re-rank',s:'warn',d:'Built, but off by default: the generic cross-encoder lowered or did not change hit@5 in every comparison, so the eval said not to ship it.'},
+    {n:'Generate',s:'warn',d:'Claude (Haiku) when an API key is set, local Qwen otherwise; both stream. The API path is tested only against a fake client. Local Qwen answers in ~3 s on GPU but often skips citations.'},
+    {n:'Serve',s:'done',d:'FastAPI with streaming, sessions, uploads, feedback, stats and API-key auth. Next.js chat and documents UI behind a proxy that keeps the key off the browser.'}
   ];
   var PC={done:['p-done','working'],warn:['p-warn','has a known flaw'],todo:['p-todo','not built'],bad:['p-bad','too slow']};
   $('#rail').innerHTML=ST.map(function(x,i){return '<button class="step" data-i="'+i+'" aria-pressed="'+(i===4)+'"><b>'+x.n+'</b><span class="pill '+PC[x.s][0]+'">'+PC[x.s][1]+'</span></button>'}).join('');
@@ -504,10 +504,11 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
 
   var TB={
     documents:{p:'Phase 4',w:'Every ingested file. Makes hash-based incremental ingestion possible.',c:[['id','TEXT PK','Stable id derived from path, not a fresh UUID'],['path','TEXT UNIQUE','Source file path'],['source_type','TEXT','code, markdown; later pdf, docx'],['language','TEXT','Optional'],['content_hash','TEXT','SHA-256 of the file. Indexed.'],['chunk_count','INTEGER','Default 0'],['first_indexed_at','TEXT','ISO 8601'],['last_indexed_at','TEXT','ISO 8601']]},
-    jobs:{p:'Phase 4',w:'One row per background upload, so the API can reply with a job id and the UI can poll.',c:[['id','TEXT PK','Job id returned by upload'],['document_id','TEXT FK','References documents; set null on delete'],['status','TEXT','queued, processing, done or failed'],['error','TEXT','Failure message, if any'],['created_at','TEXT','ISO 8601'],['finished_at','TEXT','ISO 8601, null until done']]},
+    jobs:{p:'Phase 4',w:'One row per background upload, so the API can reply with a job id and the UI can poll.',c:[['id','TEXT PK','Job id returned by upload'],['document_id','TEXT FK','References documents; set null on delete'],['status','TEXT','queued, processing, done, unchanged or failed'],['filename','TEXT','Original file name'],['error','TEXT','Failure message, if any'],['created_at','TEXT','ISO 8601'],['finished_at','TEXT','ISO 8601, null until done']]},
     sessions:{p:'Phase 6',w:'One row per conversation.',c:[['id','TEXT PK','Session id'],['created_at','TEXT','ISO 8601'],['last_active_at','TEXT','ISO 8601']]},
     messages:{p:'Phase 6',w:'Each turn in a conversation.',c:[['id','INTEGER PK','Autoincrement'],['session_id','TEXT FK','References sessions; cascade delete. Indexed.'],['role','TEXT','user or assistant'],['content','TEXT','Message text'],['sources_json','TEXT','Assistant turns only: the source cards shown with that answer'],['created_at','TEXT','ISO 8601']]},
     feedback:{p:'Phase 9',w:'Thumbs up or down on an assistant message.',c:[['id','INTEGER PK','Autoincrement'],['message_id','INTEGER FK','References messages; cascade delete'],['rating','INTEGER','-1 or 1'],['created_at','TEXT','ISO 8601']]},
+    query_log:{p:'Phase 9',w:'One row per answered question, read through GET /admin/stats.',c:[['id','INTEGER PK','Autoincrement'],['session_id','TEXT','Optional'],['question','TEXT','As asked'],['standalone_question','TEXT','After follow-up rewriting'],['retrieved_ids','TEXT','JSON array of chunk ids'],['retrieval_ms','INTEGER','Retrieval time'],['generation_ms','INTEGER','Generation time'],['model','TEXT','Model that answered'],['created_at','TEXT','ISO 8601']]},
     api_keys:{p:'Phase 7',w:'Access keys. The raw key is never stored.',c:[['id','TEXT PK','Key id'],['key_hash','TEXT UNIQUE','Hash of the key'],['label','TEXT','Optional name'],['created_at','TEXT','ISO 8601'],['revoked_at','TEXT','Null while active']]}
   };
   function showTbl(k){
