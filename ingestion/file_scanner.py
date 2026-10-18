@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ingestion.config import SUPERSET_REPO, SUPPORTED_EXTENSIONS, EXCLUDED_DIRS
+from ingestion.config import EXCLUDED_DIRS, SUPERSET_REPO, SUPPORTED_EXTENSIONS
 
 
 def should_skip(path: Path) -> bool:

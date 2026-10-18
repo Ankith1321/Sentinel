@@ -1,11 +1,16 @@
+import hashlib
 from pathlib import Path
-from uuid import uuid4
 
-from ingestion.file_scanner import scan_source_files, detect_language
+from ingestion.config import SUPERSET_REPO
+from ingestion.file_scanner import detect_language, scan_source_files
 from ingestion.records import SourceRecord
 
 
-def load_file(path: Path) -> SourceRecord | None:
+def stable_source_id(relative_path: str) -> str:
+    return hashlib.sha256(relative_path.encode("utf-8")).hexdigest()[:32]
+
+
+def load_file(path: Path, root: Path = SUPERSET_REPO) -> SourceRecord | None:
     try:
         text = path.read_text(encoding="utf-8")
     except Exception:
@@ -16,13 +21,16 @@ def load_file(path: Path) -> SourceRecord | None:
     if not text:
         return None
 
+    relative_path = path.relative_to(root).as_posix()
+
     return SourceRecord(
-        source_id=str(uuid4()),
+        source_id=stable_source_id(relative_path),
         source_type="code",
-        path=str(path),
+        path=relative_path,
         language=detect_language(path),
         title=path.name,
         content=text,
+        content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
     )
 
 
