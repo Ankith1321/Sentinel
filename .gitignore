@@ -10,3 +10,5 @@ __pycache__/
 data/indexes/
 data/processed/
 _to_delete/
+eval/results/
+data/*.db
