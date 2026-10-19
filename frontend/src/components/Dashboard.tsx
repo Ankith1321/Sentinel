@@ -395,7 +395,7 @@ export function Dashboard() {
           />
         </Card>
         <Card title="Project plan" subtitle={`${doneCount} of ${data.plan.length} phases done · read from docs/06_IMPLEMENTATION_PLAN.md`}>
-          <ul className="grid gap-2">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
             {data.plan.map((p) => (
               <li key={p.phase} className="flex flex-wrap items-start justify-between gap-2 border-t border-zinc-800 pt-2 text-sm first:border-t-0 first:pt-0">
                 <span className="min-w-0 text-zinc-200">
@@ -409,9 +409,9 @@ export function Dashboard() {
           {data.commits.length > 0 && (
             <>
               <h3 className="mb-2 mt-5 text-xs font-medium text-zinc-500">Recent commits</h3>
-              <ul className="grid gap-1.5 text-sm">
+              <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5 text-sm">
                 {data.commits.map((c) => (
-                  <li key={c.hash} className="flex gap-3">
+                  <li key={c.hash} className="flex min-w-0 gap-3">
                     <code className="text-zinc-500">{c.hash}</code>
                     <span className="min-w-0 truncate text-zinc-300" title={c.subject}>{c.subject}</span>
                   </li>

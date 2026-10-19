@@ -20,6 +20,7 @@ const TABS: { status: VerifiedStatus; label: string; hint: string }[] = [
 ];
 
 const MAX_DRAFTS = 100;
+const PAGE = 5;
 
 function ReviewItem({ item, onChange, onError }: { item: VerifiedAnswer; onChange: () => void; onError: (m: string) => void }) {
   const [text, setText] = useState(item.answer);
@@ -61,7 +62,7 @@ function ReviewItem({ item, onChange, onError }: { item: VerifiedAnswer; onChang
       )}
       <div className="flex flex-wrap gap-1.5 text-xs">
         {item.sources.map((s) => (
-          <span key={s.id} className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-zinc-400" title={s.path ?? ""}>
+          <span key={s.id} className="max-w-full break-all rounded-md border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-zinc-400" title={s.path ?? ""}>
             {s.id} {s.path}
           </span>
         ))}
@@ -117,6 +118,7 @@ export function VerifiedReview({ refreshToken, onChanged }: { refreshToken: numb
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState("");
+  const [shown, setShown] = useState(PAGE);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,7 +175,10 @@ export function VerifiedReview({ refreshToken, onChanged }: { refreshToken: numb
             type="button"
             role="tab"
             aria-selected={tab === t.status}
-            onClick={() => setTab(t.status)}
+            onClick={() => {
+              setTab(t.status);
+              setShown(PAGE);
+            }}
             className="cursor-pointer rounded-lg px-3 py-1.5 text-zinc-400 aria-selected:bg-zinc-800 aria-selected:text-zinc-100"
           >
             {t.label} <span className="tabular-nums text-zinc-500">{data?.counts[t.status] ?? "–"}</span>
@@ -193,10 +198,15 @@ export function VerifiedReview({ refreshToken, onChanged }: { refreshToken: numb
         <p className="text-sm text-zinc-400">Nothing {current.label.toLowerCase()}.</p>
       ) : (
         <ul className="space-y-4">
-          {data?.items.map((item) => (
+          {data?.items.slice(0, shown).map((item) => (
             <ReviewItem key={`${item.id}-${item.status}-${item.answer.length}`} item={item} onChange={changed} onError={setError} />
           ))}
         </ul>
+      )}
+      {data && data.items.length > shown && (
+        <button type="button" onClick={() => setShown((n) => n + PAGE)} className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:border-zinc-500">
+          Show {Math.min(PAGE, data.items.length - shown)} more of {data.items.length - shown} remaining
+        </button>
       )}
 
       <div className="space-y-2 border-t border-zinc-800 pt-4">
