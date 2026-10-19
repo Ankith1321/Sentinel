@@ -266,9 +266,9 @@ def retrieve(
     started = time.perf_counter()
 
     if mode == "vector":
-        results = vector_search(query, top_k, language, path_prefix)
+        results = vector_search(query, pool, language, path_prefix)[:top_k]
     elif mode == "keyword":
-        results = keyword_search(query, top_k, language, path_prefix)
+        results = keyword_search(query, pool, language, path_prefix)[:top_k]
     else:
         fused = demote_test_files(
             query,

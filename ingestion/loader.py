@@ -47,16 +47,3 @@ def load_all_records():
 
     return records
 
-
-if __name__ == "__main__":
-    records = load_all_records()
-
-    print(f"Loaded {len(records)} records")
-
-    for r in records[:3]:
-        print("=" * 80)
-        print("TITLE:", r.title)
-        print("LANGUAGE:", r.language)
-        print("PATH:", r.path)
-        print("CONTENT SAMPLE:")
-        print(r.content[:500])
