@@ -116,6 +116,18 @@ def approve(answer_id: int, edited_answer: str | None = None) -> None:
     invalidate()
 
 
+def approve_all_pending() -> tuple[list[int], list[dict]]:
+    approved: list[int] = []
+    skipped: list[dict] = []
+    for row in store.list_verified_answers("pending", 10_000, 0)[0]:
+        try:
+            approve(row["id"])
+            approved.append(row["id"])
+        except ApprovalRejected as error:
+            skipped.append({"id": row["id"], "question": row["question"], "reason": str(error)})
+    return approved, skipped
+
+
 def set_status(answer_id: int, status: str) -> None:
     if store.get_verified_answer(answer_id) is None:
         raise KeyError(answer_id)

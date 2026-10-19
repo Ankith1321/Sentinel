@@ -4,7 +4,7 @@ import re
 import numpy as np
 import pytest
 
-from backend.app import store, verified
+from backend.app import snapshot, store, verified
 from backend.app.db import connect, init_db
 
 DIMENSIONS = 256
@@ -103,3 +103,42 @@ def test_the_same_question_cannot_be_queued_twice():
 
     assert first is not None
     assert store.create_verified_answer("how are caches set up?", "y [S1]", SOURCES, "generated") is None
+
+
+def test_approve_all_skips_answers_without_a_citation():
+    good = store.create_verified_answer("How are caches set up?", "By CacheManager [S1].", SOURCES, "generated")
+    bad = store.create_verified_answer("How are caches cleared?", "They are cleared nightly.", SOURCES, "generated")
+
+    approved, skipped = verified.approve_all_pending()
+
+    assert approved == [good]
+    assert [s["id"] for s in skipped] == [bad] and "cite" in skipped[0]["reason"]
+    assert store.get_verified_answer(bad)["status"] == "pending"
+
+
+def test_snapshot_round_trip_restores_approved_answers(tmp_path):
+    path = tmp_path / "verified.json"
+    approved("How does Superset set up and configure its caches?")
+    store.create_verified_answer("A pending question?", "Not yet [S1].", SOURCES, "generated")
+
+    assert snapshot.export_snapshot(path) == 1
+    with connect() as db:
+        db.execute("DELETE FROM verified_answers")
+    assert snapshot.import_if_empty(path) == 1
+    assert snapshot.import_if_empty(path) == 0
+
+    match = verified.find_match("How does Superset set up and configure its caches?")
+    assert match is not None and match.sources[0]["path"] == "superset/utils/cache_manager.py"
+
+
+def test_an_imported_answer_whose_source_changed_is_not_served(tmp_path):
+    path = tmp_path / "verified.json"
+    approved("How does Superset set up and configure its caches?")
+    snapshot.export_snapshot(path)
+    with connect() as db:
+        db.execute("DELETE FROM verified_answers")
+    store.upsert_document("doc-cache", "superset/utils/cache_manager.py", "code", "python", "hash-v2", 3)
+
+    snapshot.import_snapshot(path)
+
+    assert verified.find_match("How does Superset set up and configure its caches?") is None

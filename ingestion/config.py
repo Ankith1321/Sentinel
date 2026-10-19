@@ -31,6 +31,8 @@ TEST_PATH_PENALTY = float(os.getenv("SENTINEL_TEST_PATH_PENALTY", "0.6"))
 # matches and catches 45% of paraphrases. A miss only costs a normal search; a false match serves a
 # wrong answer, so precision wins.
 VERIFIED_MATCH_THRESHOLD = float(os.getenv("SENTINEL_VERIFIED_MATCH_THRESHOLD", "0.91"))
+# Tracked in git (unlike data/*.db) so a fresh clone starts with the approved answers.
+VERIFIED_SNAPSHOT_PATH = Path(os.getenv("SENTINEL_VERIFIED_SNAPSHOT", PROJECT_ROOT / "data" / "verified_answers.json"))
 LOG_LEVEL = os.getenv("SENTINEL_LOG_LEVEL", "INFO")
 RERANK_MODEL = os.getenv("SENTINEL_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 RETRIEVAL_MODE = os.getenv("SENTINEL_RETRIEVAL_MODE", "hybrid")

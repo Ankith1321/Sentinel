@@ -297,6 +297,23 @@ def create_verified_answer(question: str, answer: str, sources: list[dict], orig
         return cursor.lastrowid
 
 
+def import_verified_answer(
+    question: str, answer: str, sources: list[dict], source_hashes: dict[str, str], origin: str, reviewed_at: str | None
+) -> bool:
+    with connect() as db:
+        exists = db.execute(
+            "SELECT 1 FROM verified_answers WHERE lower(question) = lower(?) AND status != 'rejected'", (question,)
+        ).fetchone()
+        if exists:
+            return False
+        db.execute(
+            "INSERT INTO verified_answers (question, answer, sources_json, source_hashes_json, status, origin, "
+            "created_at, reviewed_at) VALUES (?, ?, ?, ?, 'approved', ?, ?, ?)",
+            (question, answer, json.dumps(sources), json.dumps(source_hashes), origin, utc_now(), reviewed_at),
+        )
+        return True
+
+
 def list_verified_answers(status: str | None, limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:
     where, params = ("WHERE status = ?", (status,)) if status else ("", ())
     with connect() as db:

@@ -17,6 +17,7 @@ from backend.app.auth import require_admin_key, require_api_key
 from backend.app.dashboard import DashboardResponse, build_dashboard
 from backend.app.db import init_db
 from backend.app.documents import SUPPORTED_UPLOAD_SUFFIXES, delete_indexed_document, ingest_upload, safe_filename
+from backend.app.snapshot import export_snapshot, import_if_empty
 from backend.app.sync import run_sync_job, sync_running
 from ingestion.config import CORS_ORIGINS, LOG_LEVEL, MAX_UPLOAD_BYTES, PROJECT_ROOT, RETRIEVAL_MODE
 from ingestion.llm import get_provider
@@ -210,6 +211,22 @@ class VerifiedCreated(BaseModel):
     id: int
 
 
+class SkippedApproval(BaseModel):
+    id: int
+    question: str
+    reason: str
+
+
+class BulkApproval(BaseModel):
+    approved: int
+    skipped: list[SkippedApproval]
+
+
+class SnapshotExport(BaseModel):
+    exported: int
+    path: str
+
+
 class AdminSession(BaseModel):
     admin: bool
 
@@ -301,6 +318,9 @@ def warm_up() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    imported = import_if_empty()
+    if imported:
+        logger.info("loaded %d verified answers from the snapshot", imported)
     if os.getenv("SENTINEL_WARMUP", "on").lower() != "off":
         warm_up()
     yield
@@ -658,6 +678,19 @@ def verified_from_message(message_id: int) -> VerifiedCreated:
     return VerifiedCreated(id=created)
 
 
+@app.post("/admin/verified/approve-all", response_model=BulkApproval, dependencies=admin_only)
+def approve_all_verified() -> BulkApproval:
+    approved, skipped = verified.approve_all_pending()
+    export_snapshot()
+    return BulkApproval(approved=len(approved), skipped=[SkippedApproval(**s) for s in skipped])
+
+
+@app.post("/admin/verified/export", response_model=SnapshotExport, dependencies=admin_only)
+def export_verified() -> SnapshotExport:
+    count = export_snapshot()
+    return SnapshotExport(exported=count, path="data/verified_answers.json")
+
+
 @app.post("/admin/verified/{answer_id}/approve", response_model=VerifiedItem, dependencies=admin_only)
 def approve_verified(answer_id: int, request: ApproveRequest) -> VerifiedItem:
     try:
@@ -666,6 +699,7 @@ def approve_verified(answer_id: int, request: ApproveRequest) -> VerifiedItem:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Verified answer not found") from None
     except verified.ApprovalRejected as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
+    export_snapshot()
     return to_verified_item(store.get_verified_answer(answer_id))
 
 
@@ -675,6 +709,7 @@ def reject_verified(answer_id: int) -> VerifiedItem:
         verified.set_status(answer_id, "rejected")
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Verified answer not found") from None
+    export_snapshot()
     return to_verified_item(store.get_verified_answer(answer_id))
 
 
@@ -682,6 +717,7 @@ def reject_verified(answer_id: int) -> VerifiedItem:
 def delete_verified(answer_id: int) -> DeleteResponse:
     if not verified.remove(answer_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Verified answer not found")
+    export_snapshot()
     return DeleteResponse(id=str(answer_id), deleted=True)
 
 
