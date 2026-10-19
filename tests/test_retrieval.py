@@ -70,3 +70,32 @@ def test_filters_match_language_and_path_prefix():
     assert passes_filters(meta, "python", "superset/utils")
     assert not passes_filters(meta, "typescript", None)
     assert not passes_filters(meta, None, "docs/")
+
+
+def test_definitions_are_found_in_python_and_typescript():
+    source = (
+        "class SupersetSecurityException(SupersetException):\n"
+        "    def get_since_until(self): ...\n"
+        "export const hydrateDashboard = () => {};\n"
+        "export interface ThemeConfig {}\n"
+        "raise SupersetSecurityException('no')\n"
+    )
+
+    assert set(retriever.DEFINITION.findall(source)) == {
+        "SupersetSecurityException", "get_since_until", "hydrateDashboard", "ThemeConfig",
+    }
+
+
+def test_only_code_like_names_in_a_question_count_as_symbols():
+    question = "Where is SupersetSecurityException defined and how does get_since_until or BaseDAO work in SQL?"
+
+    assert retriever.QUERY_SYMBOL.findall(question) == ["SupersetSecurityException", "get_since_until", "BaseDAO"]
+
+
+def test_weighted_fusion_lets_a_definition_beat_a_chunk_found_by_both_searches():
+    usage = hit("usage", "superset/commands/create.py")
+    definition = hit("definition", "superset/exceptions.py")
+
+    fused = reciprocal_rank_fusion([[usage], [usage], [definition]], [1.0, 1.0, 2.5])
+
+    assert fused[0]["id"] == "definition"

@@ -22,6 +22,9 @@ CHUNKS_PATH = PROCESSED_DIR / (
 EMBEDDING_MODEL = os.getenv("SENTINEL_EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 
 QUERY_PREFIX = os.getenv("SENTINEL_QUERY_PREFIX", "")
+# The definition list is fused as a third ranking with extra weight: when a question names a symbol,
+# the chunk that defines it should beat the many chunks that merely use it.
+SYMBOL_WEIGHT = float(os.getenv("SENTINEL_SYMBOL_WEIGHT", "3.0"))
 TEST_PATH_PENALTY = float(os.getenv("SENTINEL_TEST_PATH_PENALTY", "0.6"))
 RERANK_MODEL = os.getenv("SENTINEL_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 RETRIEVAL_MODE = os.getenv("SENTINEL_RETRIEVAL_MODE", "hybrid")
@@ -70,3 +73,7 @@ EXCLUDED_DIRS = {
     ".next",
     "coverage",
 }
+
+# Docusaurus keeps an archived copy of the docs for every past release. These near-duplicates
+# filled 24% of all top-5 results after the October 2026 pull and pushed current docs out.
+EXCLUDED_DIR_SUFFIXES = ("_versioned_docs", "_versioned_sidebars")

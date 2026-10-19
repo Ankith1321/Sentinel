@@ -16,6 +16,7 @@ from ingestion.config import (
     QUERY_PREFIX,
     RERANK_MODEL,
     RETRIEVAL_MODE,
+    SYMBOL_WEIGHT,
     TEST_PATH_PENALTY,
 )
 
@@ -31,6 +32,14 @@ TEST_PATH_MARKERS = (
     "/tests/", "/test_", "_test.", "_tests.", ".test.", ".spec.", "/spec/", "__tests__", ".stories.",
 )
 CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+DEFINITION = re.compile(
+    r"^[ \t]*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?"
+    r"(?:class|def|function|interface|type|enum|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)",
+    flags=re.MULTILINE,
+)
+QUERY_SYMBOL = re.compile(
+    r"\b(?:[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+|[a-z]+[A-Z][A-Za-z0-9]*|[A-Z][a-z0-9]+[A-Z][A-Za-z0-9]*)\b"
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +48,7 @@ class KeywordIndex:
     ids: list[str]
     documents: list[str]
     metadatas: list[dict]
+    definitions: dict[str, list[int]]
 
 
 @lru_cache(maxsize=1)
@@ -91,8 +101,12 @@ def get_keyword_index() -> KeywordIndex:
         metadatas.extend(page["metadatas"])
 
     bm25 = BM25Okapi([tokenize_for_keywords(d) for d in documents])
-    logger.info("keyword index built over %d chunks", len(ids))
-    return KeywordIndex(bm25=bm25, ids=ids, documents=documents, metadatas=metadatas)
+    definitions: dict[str, list[int]] = {}
+    for i, document in enumerate(documents):
+        for name in set(DEFINITION.findall(document)):
+            definitions.setdefault(name, []).append(i)
+    logger.info("keyword index built over %d chunks, %d defined symbols", len(ids), len(definitions))
+    return KeywordIndex(bm25=bm25, ids=ids, documents=documents, metadatas=metadatas, definitions=definitions)
 
 
 def passes_filters(metadata: dict, language: str | None, path_prefix: str | None) -> bool:
@@ -151,13 +165,38 @@ def keyword_search(query: str, limit: int, language: str | None, path_prefix: st
     return hits
 
 
-def reciprocal_rank_fusion(rankings: list[list[dict]]) -> list[dict]:
+def symbol_search(query: str, limit: int, language: str | None, path_prefix: str | None) -> list[dict]:
+    index = get_keyword_index()
+    hits: list[dict] = []
+
+    for symbol in dict.fromkeys(QUERY_SYMBOL.findall(query)):
+        defining = sorted(
+            index.definitions.get(symbol, []),
+            key=lambda i: is_test_path(index.metadatas[i].get("path", "")),
+        )
+        for i in defining:
+            if len(hits) >= limit:
+                return hits
+            if passes_filters(index.metadatas[i], language, path_prefix):
+                hits.append(
+                    {
+                        "id": index.ids[i],
+                        "content": index.documents[i],
+                        "metadata": index.metadatas[i],
+                        "distance": None,
+                        "defines": symbol,
+                    }
+                )
+    return hits
+
+
+def reciprocal_rank_fusion(rankings: list[list[dict]], weights: list[float] | None = None) -> list[dict]:
     fused: dict[str, float] = {}
     by_id: dict[str, dict] = {}
 
-    for ranking in rankings:
+    for ranking, weight in zip(rankings, weights or [1.0] * len(rankings), strict=True):
         for rank, hit in enumerate(ranking, start=1):
-            fused[hit["id"]] = fused.get(hit["id"], 0.0) + 1.0 / (RRF_K + rank)
+            fused[hit["id"]] = fused.get(hit["id"], 0.0) + weight / (RRF_K + rank)
             by_id[hit["id"]] = {**by_id.get(hit["id"], {}), **hit}
 
     ordered = sorted(fused, key=fused.__getitem__, reverse=True)
@@ -212,7 +251,9 @@ def retrieve(
                 [
                     vector_search(query, pool, language, path_prefix),
                     keyword_search(query, pool, language, path_prefix),
-                ]
+                    symbol_search(query, pool, language, path_prefix),
+                ],
+                [1.0, 1.0, SYMBOL_WEIGHT],
             ),
         )
         results = rerank(query, fused[:pool], top_k) if mode == "hybrid_rerank" else fused[:top_k]

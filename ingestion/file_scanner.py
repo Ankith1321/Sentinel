@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from ingestion.config import EXCLUDED_DIRS, SUPERSET_REPO, SUPPORTED_EXTENSIONS
+from ingestion.config import EXCLUDED_DIR_SUFFIXES, EXCLUDED_DIRS, SUPERSET_REPO, SUPPORTED_EXTENSIONS
 
 
-def should_skip(path: Path) -> bool:
-    return any(part in EXCLUDED_DIRS for part in path.parts)
+def should_skip(path: Path, root: Path = SUPERSET_REPO) -> bool:
+    parts = path.relative_to(root).parts if path.is_relative_to(root) else path.parts
+    return any(part in EXCLUDED_DIRS or part.endswith(EXCLUDED_DIR_SUFFIXES) for part in parts)
 
 
 def detect_language(path: Path) -> str:
@@ -30,7 +31,7 @@ def scan_source_files(root: Path = SUPERSET_REPO) -> list[Path]:
         if not path.is_file():
             continue
 
-        if should_skip(path):
+        if should_skip(path, root):
             continue
 
         if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
@@ -40,10 +41,3 @@ def scan_source_files(root: Path = SUPERSET_REPO) -> list[Path]:
 
     return files
 
-
-if __name__ == "__main__":
-    files = scan_source_files()
-    print(f"Found {len(files)} source files")
-
-    for f in files[:20]:
-        print(f.relative_to(SUPERSET_REPO))
