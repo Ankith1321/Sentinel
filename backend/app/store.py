@@ -80,7 +80,7 @@ def finish_sync_run(run_id: int, report: dict | None, error: str | None) -> None
             """
             UPDATE sync_runs SET status = ?, commit_before = ?, commit_after = ?, scanned = ?, added = ?,
                 changed = ?, removed = ?, unchanged = ?, chunks_written = ?, chunks_deleted = ?,
-                errors_json = ?, error = ?, finished_at = ?
+                verified_stale = ?, errors_json = ?, error = ?, finished_at = ?
             WHERE id = ?
             """,
             (
@@ -94,6 +94,7 @@ def finish_sync_run(run_id: int, report: dict | None, error: str | None) -> None
                 report.get("unchanged"),
                 report.get("chunks_written"),
                 report.get("chunks_deleted"),
+                report.get("verified_marked_stale"),
                 json.dumps(report.get("errors", [])),
                 error,
                 utc_now(),
@@ -236,17 +237,20 @@ def add_query_log(
     generation_ms: int,
     model: str,
     needs_review: bool | None = None,
+    message_id: int | None = None,
+    verified_answer_id: int | None = None,
 ) -> None:
     with connect() as db:
         db.execute(
             """
             INSERT INTO query_log
                 (session_id, question, standalone_question, retrieved_ids,
-                 retrieval_ms, generation_ms, model, needs_review, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 retrieval_ms, generation_ms, model, needs_review, message_id, verified_answer_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (session_id, question, standalone_question, json.dumps(retrieved_ids),
-             retrieval_ms, generation_ms, model, None if needs_review is None else int(needs_review), utc_now()),
+             retrieval_ms, generation_ms, model, None if needs_review is None else int(needs_review),
+             message_id, verified_answer_id, utc_now()),
         )
 
 
@@ -276,6 +280,114 @@ def query_stats() -> dict:
         "feedback_positive_ratio": round(ratings[0] / rated, 3) if rated else None,
         "queries_per_day": [{"day": r["day"], "queries": r["queries"]} for r in per_day],
     }
+
+
+def create_verified_answer(question: str, answer: str, sources: list[dict], origin: str) -> int | None:
+    with connect() as db:
+        exists = db.execute(
+            "SELECT 1 FROM verified_answers WHERE lower(question) = lower(?) AND status != 'rejected'", (question,)
+        ).fetchone()
+        if exists:
+            return None
+        cursor = db.execute(
+            "INSERT INTO verified_answers (question, answer, sources_json, status, origin, created_at) "
+            "VALUES (?, ?, ?, 'pending', ?, ?)",
+            (question, answer, json.dumps(sources), origin, utc_now()),
+        )
+        return cursor.lastrowid
+
+
+def list_verified_answers(status: str | None, limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:
+    where, params = ("WHERE status = ?", (status,)) if status else ("", ())
+    with connect() as db:
+        rows = db.execute(
+            f"SELECT * FROM verified_answers {where} ORDER BY id DESC LIMIT ? OFFSET ?", (*params, limit, offset)
+        ).fetchall()
+        total = db.execute(f"SELECT COUNT(*) FROM verified_answers {where}", params).fetchone()[0]
+    return rows, total
+
+
+def verified_answer_counts() -> dict[str, int]:
+    with connect() as db:
+        rows = db.execute("SELECT status, COUNT(*) FROM verified_answers GROUP BY status").fetchall()
+    counts = {"pending": 0, "approved": 0, "stale": 0, "rejected": 0}
+    counts.update({r[0]: r[1] for r in rows})
+    return counts
+
+
+def get_verified_answer(answer_id: int) -> sqlite3.Row | None:
+    with connect() as db:
+        return db.execute("SELECT * FROM verified_answers WHERE id = ?", (answer_id,)).fetchone()
+
+
+def approved_verified_answers() -> list[sqlite3.Row]:
+    with connect() as db:
+        return db.execute("SELECT * FROM verified_answers WHERE status = 'approved' ORDER BY id").fetchall()
+
+
+def approve_verified_answer(answer_id: int, answer: str, source_hashes: dict[str, str]) -> None:
+    with connect() as db:
+        db.execute(
+            "UPDATE verified_answers SET status = 'approved', answer = ?, source_hashes_json = ?, "
+            "stale_reason = NULL, reviewed_at = ? WHERE id = ?",
+            (answer, json.dumps(source_hashes), utc_now(), answer_id),
+        )
+
+
+def set_verified_status(answer_id: int, status: str, reason: str | None = None) -> None:
+    with connect() as db:
+        db.execute(
+            "UPDATE verified_answers SET status = ?, stale_reason = ?, reviewed_at = ? WHERE id = ?",
+            (status, reason, utc_now(), answer_id),
+        )
+
+
+def delete_verified_answer(answer_id: int) -> bool:
+    with connect() as db:
+        return db.execute("DELETE FROM verified_answers WHERE id = ?", (answer_id,)).rowcount > 0
+
+
+def record_verified_served(answer_id: int) -> None:
+    with connect() as db:
+        db.execute(
+            "UPDATE verified_answers SET times_served = times_served + 1, last_served_at = ? WHERE id = ?",
+            (utc_now(), answer_id),
+        )
+
+
+def mark_verified_stale(changed_paths: set[str]) -> int:
+    marked = 0
+    for row in approved_verified_answers():
+        touched = sorted(set(json.loads(row["source_hashes_json"])) & changed_paths)
+        if touched:
+            set_verified_status(row["id"], "stale", f"Source changed: {', '.join(touched)}")
+            marked += 1
+    return marked
+
+
+def content_hashes(paths: list[str]) -> dict[str, str]:
+    if not paths:
+        return {}
+    with connect() as db:
+        rows = db.execute(
+            f"SELECT path, content_hash FROM documents WHERE path IN ({','.join('?' * len(paths))})", paths
+        ).fetchall()
+    return {r["path"]: r["content_hash"] for r in rows}
+
+
+def assistant_turn(message_id: int) -> tuple[str, sqlite3.Row] | None:
+    with connect() as db:
+        answer = db.execute(
+            "SELECT * FROM messages WHERE id = ? AND role = 'assistant'", (message_id,)
+        ).fetchone()
+        if answer is None:
+            return None
+        question = db.execute(
+            "SELECT content FROM messages WHERE session_id = ? AND role = 'user' AND id < ? "
+            "ORDER BY id DESC LIMIT 1",
+            (answer["session_id"], message_id),
+        ).fetchone()
+    return (question[0], answer) if question else None
 
 
 def create_api_key(label: str | None) -> tuple[str, str]:

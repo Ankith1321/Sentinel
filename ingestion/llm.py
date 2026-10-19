@@ -62,6 +62,9 @@ class LocalProvider:
 
     def __init__(self, model: str, quantization: str = "") -> None:
         self.model = model
+        # One generation at a time: concurrent requests would each need their own KV cache, and an
+        # 8 GB card has no room for two.
+        self.generation_lock = threading.Lock()
         self.tokenizer = AutoTokenizer.from_pretrained(model)
         self.llm = AutoModelForCausalLM.from_pretrained(model, device_map="auto", **self.load_options(quantization))
         logger.info("local LLM %s (%s) loaded on %s", model, quantization or "fp16", self.llm.device)
@@ -91,7 +94,7 @@ class LocalProvider:
     def complete(self, system: str, messages: list[dict], max_tokens: int) -> str:
         inputs = self.build_inputs(system, messages)
 
-        with torch.no_grad():
+        with self.generation_lock, torch.no_grad():
             output = self.llm.generate(**inputs, max_new_tokens=max_tokens, do_sample=False)
 
         new_tokens = output[0][inputs["input_ids"].shape[1]:]
@@ -105,10 +108,11 @@ class LocalProvider:
             with torch.no_grad():
                 self.llm.generate(**inputs, max_new_tokens=max_tokens, do_sample=False, streamer=streamer)
 
-        worker = threading.Thread(target=generate, daemon=True)
-        worker.start()
-        yield from streamer
-        worker.join()
+        with self.generation_lock:
+            worker = threading.Thread(target=generate, daemon=True)
+            worker.start()
+            yield from streamer
+            worker.join()
 
 
 def resolve_provider_name() -> str:

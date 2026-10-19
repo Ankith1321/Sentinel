@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS query_log (
     generation_ms       INTEGER NOT NULL,
     model               TEXT NOT NULL,
     needs_review        INTEGER,
+    message_id          INTEGER,
+    verified_answer_id  INTEGER,
     created_at          TEXT NOT NULL
 );
 
@@ -77,11 +79,28 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     unchanged      INTEGER,
     chunks_written INTEGER,
     chunks_deleted INTEGER,
+    verified_stale INTEGER,
     errors_json    TEXT,
     error          TEXT,
     started_at     TEXT NOT NULL,
     finished_at    TEXT
 );
+
+CREATE TABLE IF NOT EXISTS verified_answers (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    question           TEXT NOT NULL,
+    answer             TEXT NOT NULL,
+    sources_json       TEXT NOT NULL,
+    source_hashes_json TEXT NOT NULL DEFAULT '{}',
+    status             TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'stale', 'rejected')),
+    origin             TEXT NOT NULL CHECK (origin IN ('generated', 'chat')),
+    stale_reason       TEXT,
+    times_served       INTEGER NOT NULL DEFAULT 0,
+    created_at         TEXT NOT NULL,
+    reviewed_at        TEXT,
+    last_served_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_verified_answers_status ON verified_answers(status);
 
 CREATE TABLE IF NOT EXISTS api_keys (
     id         TEXT PRIMARY KEY,
@@ -118,5 +137,8 @@ def init_db() -> None:
     with connect() as connection:
         connection.executescript(SCHEMA)
         columns = {row[1] for row in connection.execute("PRAGMA table_info(query_log)")}
-        if "needs_review" not in columns:
-            connection.execute("ALTER TABLE query_log ADD COLUMN needs_review INTEGER")
+        for column in ("needs_review", "message_id", "verified_answer_id"):
+            if column not in columns:
+                connection.execute(f"ALTER TABLE query_log ADD COLUMN {column} INTEGER")
+        if "verified_stale" not in {row[1] for row in connection.execute("PRAGMA table_info(sync_runs)")}:
+            connection.execute("ALTER TABLE sync_runs ADD COLUMN verified_stale INTEGER")

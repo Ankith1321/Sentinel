@@ -128,9 +128,10 @@ def prepare(
     mode: str | None,
     language: str | None,
     path_prefix: str | None,
+    standalone_question: str | None = None,
 ) -> dict:
     history = history or []
-    standalone = reformulate_question(question, history)
+    standalone = standalone_question or reformulate_question(question, history)
 
     started = time.perf_counter()
     retrieved = retrieve(standalone, top_k=top_k, mode=mode, language=language, path_prefix=path_prefix)
@@ -169,8 +170,9 @@ def ask_sentinel(
     mode: str | None = None,
     language: str | None = None,
     path_prefix: str | None = None,
+    standalone_question: str | None = None,
 ) -> dict:
-    prepared = prepare(question, top_k, history, mode, language, path_prefix)
+    prepared = prepare(question, top_k, history, mode, language, path_prefix, standalone_question)
     provider = get_provider()
 
     started = time.perf_counter()
@@ -200,8 +202,9 @@ def stream_sentinel(
     mode: str | None = None,
     language: str | None = None,
     path_prefix: str | None = None,
+    standalone_question: str | None = None,
 ) -> Iterator[tuple[str, object]]:
-    prepared = prepare(question, top_k, history, mode, language, path_prefix)
+    prepared = prepare(question, top_k, history, mode, language, path_prefix, standalone_question)
     provider = get_provider()
 
     yield "sources", {"sources": prepared["sources"], "standalone_question": prepared["standalone_question"]}

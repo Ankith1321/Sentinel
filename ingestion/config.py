@@ -26,6 +26,11 @@ QUERY_PREFIX = os.getenv("SENTINEL_QUERY_PREFIX", "")
 # the chunk that defines it should beat the many chunks that merely use it.
 SYMBOL_WEIGHT = float(os.getenv("SENTINEL_SYMBOL_WEIGHT", "3.0"))
 TEST_PATH_PENALTY = float(os.getenv("SENTINEL_TEST_PATH_PENALTY", "0.6"))
+# Cosine similarity a new question needs to an approved question before its stored answer is reused.
+# eval/run_matching_eval.py (bge-small): the closest near-miss scores 0.891, so 0.91 gives zero false
+# matches and catches 45% of paraphrases. A miss only costs a normal search; a false match serves a
+# wrong answer, so precision wins.
+VERIFIED_MATCH_THRESHOLD = float(os.getenv("SENTINEL_VERIFIED_MATCH_THRESHOLD", "0.91"))
 LOG_LEVEL = os.getenv("SENTINEL_LOG_LEVEL", "INFO")
 RERANK_MODEL = os.getenv("SENTINEL_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 RETRIEVAL_MODE = os.getenv("SENTINEL_RETRIEVAL_MODE", "hybrid")

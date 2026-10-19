@@ -7,7 +7,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from backend.app import store
+from backend.app import store, verified
 from backend.app.db import init_db
 from backend.app.documents import replace_source_chunks
 from ingestion.chunker import chunk_record
@@ -38,6 +38,7 @@ class SyncReport:
     unchanged: int = 0
     chunks_written: int = 0
     chunks_deleted: int = 0
+    verified_marked_stale: int = 0
     seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
 
@@ -70,7 +71,7 @@ def git_pull(repo: Path) -> None:
     )
 
 
-def index_changed_files(root: Path, manifest: dict, report: SyncReport) -> set[str]:
+def index_changed_files(root: Path, manifest: dict, report: SyncReport, touched: set[str]) -> set[str]:
     seen: set[str] = set()
 
     for path in scan_source_files(root):
@@ -95,6 +96,7 @@ def index_changed_files(root: Path, manifest: dict, report: SyncReport) -> set[s
             )
             report.chunks_written += written
             report.chunks_deleted += deleted
+            touched.add(relative)
             if known is None:
                 report.added += 1
             else:
@@ -106,7 +108,7 @@ def index_changed_files(root: Path, manifest: dict, report: SyncReport) -> set[s
     return seen
 
 
-def remove_missing_files(manifest: dict, seen: set[str], report: SyncReport) -> None:
+def remove_missing_files(manifest: dict, seen: set[str], report: SyncReport, touched: set[str]) -> None:
     for relative, row in manifest.items():
         if relative in seen:
             continue
@@ -116,6 +118,7 @@ def remove_missing_files(manifest: dict, seen: set[str], report: SyncReport) -> 
         store.delete_document(row["id"])
         report.chunks_deleted += len(stale)
         report.removed += 1
+        touched.add(relative)
 
 
 def sync_corpus(root: Path = SUPERSET_REPO, pull: bool = False, refresh_keywords: bool = True) -> SyncReport:
@@ -134,8 +137,10 @@ def sync_corpus(root: Path = SUPERSET_REPO, pull: bool = False, refresh_keywords
         report.commit_after = git_head(root)
 
         manifest = store.corpus_documents()
-        seen = index_changed_files(root, manifest, report)
-        remove_missing_files(manifest, seen, report)
+        touched: set[str] = set()
+        seen = index_changed_files(root, manifest, report, touched)
+        remove_missing_files(manifest, seen, report, touched)
+        report.verified_marked_stale = verified.mark_stale(touched)
 
         if report.touched and refresh_keywords:
             refresh_keyword_index()
