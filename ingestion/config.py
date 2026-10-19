@@ -26,6 +26,7 @@ QUERY_PREFIX = os.getenv("SENTINEL_QUERY_PREFIX", "")
 # the chunk that defines it should beat the many chunks that merely use it.
 SYMBOL_WEIGHT = float(os.getenv("SENTINEL_SYMBOL_WEIGHT", "3.0"))
 TEST_PATH_PENALTY = float(os.getenv("SENTINEL_TEST_PATH_PENALTY", "0.6"))
+LOG_LEVEL = os.getenv("SENTINEL_LOG_LEVEL", "INFO")
 RERANK_MODEL = os.getenv("SENTINEL_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 RETRIEVAL_MODE = os.getenv("SENTINEL_RETRIEVAL_MODE", "hybrid")
 

@@ -1,5 +1,6 @@
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -86,8 +87,7 @@ def tokenize_for_keywords(text: str) -> list[str]:
     return tokens
 
 
-@lru_cache(maxsize=1)
-def get_keyword_index() -> KeywordIndex:
+def build_keyword_index() -> KeywordIndex:
     collection = get_collection()
     ids: list[str] = []
     documents: list[str] = []
@@ -107,6 +107,31 @@ def get_keyword_index() -> KeywordIndex:
             definitions.setdefault(name, []).append(i)
     logger.info("keyword index built over %d chunks, %d defined symbols", len(ids), len(definitions))
     return KeywordIndex(bm25=bm25, ids=ids, documents=documents, metadatas=metadatas, definitions=definitions)
+
+
+_keyword_index: KeywordIndex | None = None
+_keyword_lock = threading.Lock()
+
+
+def get_keyword_index() -> KeywordIndex:
+    global _keyword_index
+    if _keyword_index is None:
+        with _keyword_lock:
+            if _keyword_index is None:
+                _keyword_index = build_keyword_index()
+    return _keyword_index
+
+
+def refresh_keyword_index() -> None:
+    # Build the replacement first and swap it in, so queries keep using the old index meanwhile.
+    global _keyword_index
+    fresh = build_keyword_index()
+    with _keyword_lock:
+        _keyword_index = fresh
+
+
+def keyword_index_size() -> int | None:
+    return len(_keyword_index.ids) if _keyword_index is not None else None
 
 
 def passes_filters(metadata: dict, language: str | None, path_prefix: str | None) -> bool:
