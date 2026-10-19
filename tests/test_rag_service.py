@@ -34,7 +34,8 @@ def provider(monkeypatch):
     return fake
 
 
-def test_messages_number_passages_and_keep_history_first():
+def test_messages_number_passages_and_keep_history_first(monkeypatch):
+    monkeypatch.setattr(rag_service, "PROMPT_VARIANT", "v1")
     history = [{"role": "user", "content": "earlier"}, {"role": "assistant", "content": "reply"}]
 
     messages = rag_service.build_messages("what next?", [context("a"), context("b")], history)
@@ -43,6 +44,14 @@ def test_messages_number_passages_and_keep_history_first():
     assert messages[-1]["role"] == "user"
     assert "[S1]" in messages[-1]["content"] and "[S2]" in messages[-1]["content"]
     assert messages[-1]["content"].endswith("QUESTION: what next?")
+
+
+def test_strict_prompt_repeats_the_rules_after_the_question(monkeypatch):
+    monkeypatch.setattr(rag_service, "PROMPT_VARIANT", "v2")
+
+    last = rag_service.build_messages("where is x?", [context("a")], [])[-1]["content"]
+
+    assert last.index("QUESTION: where is x?") < last.index("Reminder: answer in 2 to 5 sentences")
 
 
 def test_context_budget_drops_the_least_relevant_whole_chunks():

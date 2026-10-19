@@ -46,9 +46,12 @@ MAX_UPLOAD_BYTES = int(os.getenv("SENTINEL_MAX_UPLOAD_BYTES", str(10 * 1024 * 10
 
 LLM_PROVIDER =os.getenv("SENTINEL_LLM_PROVIDER", "auto")
 ANTHROPIC_MODEL = os.getenv("SENTINEL_ANTHROPIC_MODEL", "claude-haiku-5-5")
-LOCAL_LLM_MODEL = os.getenv("SENTINEL_LOCAL_LLM_MODEL", "Qwen/Qwen2.5-1.5B-Instruct")
-LOCAL_LLM_QUANT = os.getenv("SENTINEL_LOCAL_LLM_QUANT", "")
-PROMPT_VARIANT = os.getenv("SENTINEL_PROMPT_VARIANT", "v1")
+# On the answer eval the 7B (4-bit) and 3B tied with the strict prompt, and the 1.5B cited a source in
+# only 5% of answers. 7B is the default because it is Apache-2.0; Qwen2.5-3B is licensed for
+# non-commercial use only. 4-bit keeps it inside an 8 GB GPU.
+LOCAL_LLM_MODEL = os.getenv("SENTINEL_LOCAL_LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+LOCAL_LLM_QUANT = os.getenv("SENTINEL_LOCAL_LLM_QUANT", "4bit")
+PROMPT_VARIANT = os.getenv("SENTINEL_PROMPT_VARIANT", "v2")
 MAX_ANSWER_TOKENS = int(os.getenv("SENTINEL_MAX_ANSWER_TOKENS", "600"))
 CONTEXT_TOKEN_BUDGET = int(os.getenv("SENTINEL_CONTEXT_TOKEN_BUDGET", "4000"))
 
