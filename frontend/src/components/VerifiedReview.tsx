@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  approveAllVerified,
   approveVerified,
   deleteVerified,
   getSeedQuestions,
@@ -119,6 +120,8 @@ export function VerifiedReview({ refreshToken, onChanged }: { refreshToken: numb
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState("");
   const [shown, setShown] = useState(PAGE);
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +142,21 @@ export function VerifiedReview({ refreshToken, onChanged }: { refreshToken: numb
     setReload((r) => r + 1);
     onChanged();
   };
+
+  async function approveAll() {
+    setBulkBusy(true);
+    try {
+      const result = await approveAllVerified();
+      const skipped = result.skipped.map((s) => `#${s.id} (${s.reason})`).join("; ");
+      setNotice(`Approved ${result.approved} answers.${skipped ? ` Left pending: ${skipped}` : ""}`);
+      changed();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk approval failed");
+    } finally {
+      setBulkBusy(false);
+      setConfirmAll(false);
+    }
+  }
 
   async function loadSeeds() {
     try {
@@ -186,6 +204,28 @@ export function VerifiedReview({ refreshToken, onChanged }: { refreshToken: numb
         ))}
       </div>
       <p className="text-xs text-zinc-500">{current.hint}</p>
+
+      {tab === "pending" && (data?.counts.pending ?? 0) > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm">
+          {confirmAll ? (
+            <>
+              <span className="text-zinc-300">
+                Approve all {data?.counts.pending} pending answers? Answers without a valid citation stay pending.
+              </span>
+              <button type="button" disabled={bulkBusy} onClick={approveAll} className="cursor-pointer rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-zinc-950 disabled:opacity-50">
+                {bulkBusy ? "Approving…" : "Yes, approve all"}
+              </button>
+              <button type="button" disabled={bulkBusy} onClick={() => setConfirmAll(false)} className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200">
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => setConfirmAll(true)} className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:border-zinc-500">
+              Approve all pending
+            </button>
+          )}
+        </div>
+      )}
 
       {notice && <p className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">{notice}</p>}
       {error && (

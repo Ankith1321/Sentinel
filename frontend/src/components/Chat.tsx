@@ -14,6 +14,8 @@ import { MessageBubble } from "./MessageBubble";
 
 const SESSION_KEY = "sentinel.sessionId";
 const MIN_QUESTION_LENGTH = 3;
+// How close to the bottom (px) the reader must be for new tokens to keep the view pinned there.
+const FOLLOW_THRESHOLD_PX = 160;
 
 function remember(id: string | null) {
   try {
@@ -52,7 +54,7 @@ export function Chat() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const abortRef = useRef<AbortController | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const followRef = useRef(true);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -88,12 +90,29 @@ export function Chat() {
   }, [refreshSessions]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const onScroll = () => {
+      const distance = document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
+      followRef.current = distance < FOLLOW_THRESHOLD_PX;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    // Streaming re-renders on every token. A smooth scroll per token restarts its animation each time
+    // and makes the page bounce, so jump instantly, once per frame, and only while the reader is
+    // already at the bottom; scrolling up to read stops the following.
+    if (!followRef.current) return;
+    const frame = requestAnimationFrame(() =>
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }),
+    );
+    return () => cancelAnimationFrame(frame);
   }, [messages]);
 
   async function openSession(id: string) {
     if (busy) return;
     setNotice("");
+    followRef.current = true;
     try {
       setMessages(await loadMessages(id));
       setSessionId(id);
@@ -118,6 +137,7 @@ export function Chat() {
     setBusy(true);
     setInput("");
     setNotice("");
+    followRef.current = true;
 
     const draftKey = crypto.randomUUID();
     setMessages((prev) => [
@@ -255,7 +275,6 @@ export function Chat() {
           </div>
         )}
 
-        <div ref={bottomRef} />
 
         <div className="sticky bottom-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
           <label htmlFor="question" className="sr-only">

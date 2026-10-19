@@ -311,6 +311,8 @@ export const listVerified = (status: VerifiedStatus) =>
   request<VerifiedList>(`/admin/verified?status=${status}&limit=100`);
 export const approveVerified = (id: number, answer?: string) =>
   request<VerifiedAnswer>(`/admin/verified/${id}/approve`, json(answer ? { answer } : {}));
+export const approveAllVerified = () =>
+  request<{ approved: number; skipped: { id: number; question: string; reason: string }[] }>("/admin/verified/approve-all", { method: "POST" });
 export const rejectVerified = (id: number) => request<VerifiedAnswer>(`/admin/verified/${id}/reject`, { method: "POST" });
 export const deleteVerified = (id: number) => request(`/admin/verified/${id}`, { method: "DELETE" });
 export const queueDrafts = (questions: string[]) => request<{ queued: number }>("/admin/verified/drafts", json({ questions }));
