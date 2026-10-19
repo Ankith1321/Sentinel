@@ -8,11 +8,20 @@ export type Source = {
   preview: string | null;
 };
 
+export type AnswerChecks = {
+  cited_sources: number[];
+  invalid_citations: number[];
+  unsupported_terms: string[];
+  abstained: boolean;
+  needs_review: boolean;
+};
+
 export type ChatMessage = {
   key: string;
   role: "user" | "assistant";
   content: string;
   sources?: Source[] | null;
+  checks?: AnswerChecks;
   messageId?: number;
   rating?: -1 | 1;
   streaming?: boolean;
@@ -68,6 +77,7 @@ export type DonePayload = {
   generation_ms: number;
   message_id?: number;
   session_id?: string;
+  checks?: AnswerChecks;
 };
 
 export type StreamEvent =

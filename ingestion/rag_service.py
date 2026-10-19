@@ -3,8 +3,9 @@ import logging
 import time
 from collections.abc import Iterator
 
+from ingestion.answer_checks import check_answer
 from ingestion.chunker import count_tokens
-from ingestion.config import CONTEXT_TOKEN_BUDGET, MAX_ANSWER_TOKENS
+from ingestion.config import CONTEXT_TOKEN_BUDGET, MAX_ANSWER_TOKENS, PROMPT_VARIANT
 from ingestion.llm import get_provider
 from ingestion.retriever import retrieve
 
@@ -24,6 +25,24 @@ Rules:
 - Markers like [S1] in earlier conversation turns refer to those turns' own passages, not the current ones.
 
 Format: a direct answer first, then a short "Relevant files" list."""
+
+STRICT_SYSTEM_PROMPT = """You answer questions about the Apache Superset codebase using ONLY the numbered passages given with each question.
+
+How to answer:
+1. Write 2 to 5 short sentences. After every sentence that states a fact, add the number of the passage it came from, like [S1] or [S2].
+2. Name the exact file paths, classes and functions that appear in the passages. Never mention a file, class or function that is not in the passages.
+3. If the passages do not answer the question, reply: "The retrieved passages do not contain the answer." Then say in one sentence what is missing.
+4. Do not write code unless a passage contains that exact code.
+
+Example of the format only (not about Superset):
+Question: Where is the retry limit set?
+Answer: The retry limit is read from the `RETRY_MAX` setting in `config.py` [S1]. The worker applies it when it schedules a task [S2]."""
+
+SYSTEM_PROMPTS = {"v1": SYSTEM_PROMPT, "v2": STRICT_SYSTEM_PROMPT}
+REMINDERS = {
+    "v1": "",
+    "v2": "\n\nReminder: answer in 2 to 5 sentences, cite every fact as [S#], and use only the passages above.",
+}
 
 REFORMULATE_SYSTEM_PROMPT = """You rewrite a follow-up question into a standalone search query for a code search engine.
 Use the conversation to resolve pronouns and references. Keep identifiers, file names and technical terms exactly.
@@ -82,7 +101,7 @@ def build_messages(question: str, contexts: list[dict], history: list[dict]) -> 
     blocks = "\n\n".join(format_context_block(i, c) for i, c in enumerate(contexts, start=1))
     current = (
         "Passages for the current question (markers [S1], [S2], ... refer only to these):\n\n"
-        f"{blocks}\n\nQUESTION: {question}"
+        f"{blocks}\n\nQUESTION: {question}{REMINDERS[PROMPT_VARIANT]}"
     )
     return [*history, {"role": "user", "content": current}]
 
@@ -155,7 +174,7 @@ def ask_sentinel(
     provider = get_provider()
 
     started = time.perf_counter()
-    answer = provider.complete(SYSTEM_PROMPT, prepared["messages"], MAX_ANSWER_TOKENS)
+    answer = provider.complete(SYSTEM_PROMPTS[PROMPT_VARIANT], prepared["messages"], MAX_ANSWER_TOKENS)
     generation_ms = (time.perf_counter() - started) * 1000
 
     log_query(question, prepared, generation_ms, provider.model)
@@ -170,6 +189,7 @@ def ask_sentinel(
         "retrieval_ms": round(prepared["retrieval_ms"]),
         "generation_ms": round(generation_ms),
         "retrieved_ids": [c["id"] for c in prepared["contexts"]],
+        "checks": check_answer(answer, prepared["contexts"]).to_dict(),
     }
 
 
@@ -188,15 +208,17 @@ def stream_sentinel(
 
     started = time.perf_counter()
     parts: list[str] = []
-    for token in provider.stream(SYSTEM_PROMPT, prepared["messages"], MAX_ANSWER_TOKENS):
+    for token in provider.stream(SYSTEM_PROMPTS[PROMPT_VARIANT], prepared["messages"], MAX_ANSWER_TOKENS):
         parts.append(token)
         yield "token", token
 
     generation_ms = (time.perf_counter() - started) * 1000
     log_query(question, prepared, generation_ms, provider.model)
 
+    answer = "".join(parts).strip()
     yield "done", {
-        "answer": "".join(parts).strip(),
+        "answer": answer,
+        "checks": check_answer(answer, prepared["contexts"]).to_dict(),
         "sources": prepared["sources"],
         "model": provider.model,
         "retrieval_ms": round(prepared["retrieval_ms"]),

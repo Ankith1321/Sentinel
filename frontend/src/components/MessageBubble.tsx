@@ -78,6 +78,16 @@ export function MessageBubble({ message, onRate }: Props) {
       )}
       {message.streaming && !waiting && <span className="mt-1 inline-block h-4 w-1.5 animate-pulse bg-zinc-500" />}
 
+      {message.checks?.needs_review && !message.streaming && (
+        <p role="note" className="mt-4 rounded-xl border border-amber-900 bg-amber-950/40 p-3 text-xs text-amber-200">
+          Check this answer against the sources.{" "}
+          {message.checks.cited_sources.length === 0 && "It does not cite any source. "}
+          {message.checks.invalid_citations.length > 0 && "It cites a source that was not retrieved. "}
+          {message.checks.unsupported_terms.length > 0 &&
+            `These names are not in the retrieved sources: ${message.checks.unsupported_terms.slice(0, 5).join(", ")}.`}
+        </p>
+      )}
+
       {message.sources && message.sources.length > 0 && (
         <details className="mt-4">
           <summary className="cursor-pointer text-xs font-medium text-zinc-400 hover:text-zinc-200">

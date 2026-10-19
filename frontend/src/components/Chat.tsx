@@ -152,6 +152,7 @@ export function Chat() {
           patch({
             content: event.data.answer,
             sources: event.data.sources,
+            checks: event.data.checks,
             messageId: event.data.message_id,
             model: event.data.model,
             latencyMs: event.data.retrieval_ms + event.data.generation_ms,

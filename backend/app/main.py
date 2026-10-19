@@ -44,6 +44,14 @@ class SourceItem(BaseModel):
     preview: str | None = None
 
 
+class AnswerChecks(BaseModel):
+    cited_sources: list[int]
+    invalid_citations: list[int]
+    unsupported_terms: list[str]
+    abstained: bool
+    needs_review: bool
+
+
 class QueryResponse(BaseModel):
     question: str
     standalone_question: str
@@ -53,6 +61,7 @@ class QueryResponse(BaseModel):
     model: str
     retrieval_ms: int
     generation_ms: int
+    checks: AnswerChecks | None = None
     session_id: str | None = None
     message_id: int | None = None
 
