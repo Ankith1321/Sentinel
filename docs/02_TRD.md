@@ -1,56 +1,70 @@
 # Technical Requirements Document (TRD)
 
 **Project:** Sentinel
-**Status:** Living document — update when a stack or infra decision changes
+**Status:** Living document. Update it when a stack or infrastructure decision changes. Last updated 2026-10-19.
 **Related:** [`01_PRD.md`](01_PRD.md) · [`CONTEXT.md`](CONTEXT.md) · [`05_BACKEND_SCHEMA.md`](05_BACKEND_SCHEMA.md)
 
 ## 1. Overview
 
-Sentinel is a retrieval-augmented generation service: a FastAPI backend that chunks and embeds a source codebase into ChromaDB, retrieves the most relevant chunks for a natural-language question, and generates a cited answer from an LLM. A Next.js frontend is the reference client. This document records *why* each technical choice was made, not just what it is — the decision log below is what future changes should be checked against before being reverted or second-guessed.
+Sentinel is a retrieval-augmented generation service: a FastAPI backend that chunks and embeds a source codebase into ChromaDB, retrieves the most relevant chunks for a natural-language question, and generates a cited answer from an LLM, unless an administrator-approved answer already covers the question. A Next.js frontend is the reference client. This document records *why* each technical choice was made, not just what it is. The decision table below is what future changes should be checked against before being reverted or second-guessed.
 
 ## 2. Architecture
 
-Two independent lifecycles sharing one vector store:
+Two lifecycles share one vector store and one SQLite database:
 
-- **Build time** (offline, currently manual): file scan → load → chunk → embed → upsert into ChromaDB.
-- **Query time** (online, per request): embed question → vector search → retrieve top-k → prompt assembly → LLM generation → API response.
+- **Index time.** A full build (`ingestion.chunker` then `ingestion.build_vectorstore`) scans, loads, chunks, embeds and upserts the whole corpus and records a per-file manifest. After that, the incremental sync (`POST /admin/sync` or `python -m backend.app.sync`) hashes every file against the manifest and re-indexes only what changed, removed or appeared. Uploads go through the same chunk-embed-upsert path in a background task.
+- **Query time.** Rewrite a follow-up into a standalone question, then check the verified-answers database. On a match, return the approved answer. Otherwise run vector search, BM25 and the symbol-definition index, fuse them, trim to a token budget, generate with the LLM, check the answer's citations, then stream it and log it.
 
-Both halves currently run as a single Python process each (a CLI script for build time, a FastAPI app for query time). There is no message queue, no background worker, and no load balancer — this is a single-instance service today, by design, not by oversight.
+Each half is a single Python process (a CLI or the FastAPI app). There is no message queue and no load balancer: this is a single-instance service by design. Only one process may write to the index at a time, which is why the sync normally runs inside the API process.
 
 ## 3. Stack decisions
 
 | Layer | Choice | Why | Rejected |
 |---|---|---|---|
-| API framework | FastAPI | Native async, Pydantic validation at the boundary, auto-generated OpenAPI docs for free | Flask (no native async without extra tooling), Django (too heavy for a single-service API with no admin/ORM need) |
-| Vector store | ChromaDB, persistent local client | Zero external infra, adequate up to roughly hundreds of thousands of vectors, fast to iterate on | Pinecone/Qdrant — real options once this needs to scale past a single machine or serve multiple instances; premature today, migration path deliberately left open in the decision log |
-| Embedding model | `sentence-transformers/all-MiniLM-L6-v2`, 384-dim (see the embedding experiment in the Implementation Plan) | Fast enough for CPU-only inference, no per-call API cost, adequate baseline quality. Its window is 256 tokens, so chunks are capped at 200 target / 240 max tokens; the 512/1024 sizes in `CONTEXT.md` rule 8.4 would be silently truncated by this model. Chunk sizes live in `ingestion/config.py` and follow the embedder | `BAAI/bge-large-en-v1.5` (1024-dim) — better quality but 3x the storage and slower on CPU; upgrade is gated on having an eval number to justify it (see PRD success metrics), not swapped on vibes |
-| LLM (generation) | Local `Qwen/Qwen2.5-1.5B-Instruct` today; API-based (Claude Haiku / GPT-4o-mini) planned as the primary path | API models give materially better grounded-answer quality per dollar than a small local model run unoptimized | 7B+ local models without quantization — not viable on CPU-only dev hardware; fine-tuning a model on the codebase — goes stale the moment code changes and can't cite a source file |
-| Frontend | Next.js 16 (App Router) + Tailwind | TypeScript, fast iteration. A route handler (`src/app/api/[...path]`) is the BFF: the browser only talks to it, and it adds the `X-API-Key` server-side from `SENTINEL_API_KEY`, so the key never ships in the JS bundle. `NEXT_PUBLIC_API_URL` is optional and bypasses the proxy (only sensible with auth off) | Plain React SPA (no server-rendering story), SvelteKit (smaller ecosystem fit for this stack) |
-| Containerization | Docker — `docker/backend.Dockerfile`, `docker/docker-compose.yml` | Standard, portable, matches the eventual Azure deployment target | — |
-| Deploy targets | GitHub (source), Hugging Face Spaces (public demo, port 7860 convention), Azure Container Apps (production target) | HF Spaces and Azure are not competing choices — HF is the free, fast public demo link; Azure is the actual "built for enterprise" story, and the roles this project targets named Azure specifically | Self-managed VM / bare Kubernetes as a first step — explicitly deferred per the roadmap until the core product works |
+| API framework | FastAPI | Native async, Pydantic validation at the boundary, free OpenAPI docs | Flask (no native async without extra tooling), Django (too heavy for a single API with no admin/ORM need) |
+| Vector store | ChromaDB, persistent local client | Zero external infrastructure; holds 146,435 chunks on one machine | Pinecone/Qdrant: real options once this must scale past one machine or run several instances |
+| Relational store | SQLite (`data/sentinel.db`) | One file, no server; holds the manifest, sessions, messages, feedback, jobs, sync runs, verified answers, query log and API keys | PostgreSQL: only once there is more than one API instance |
+| Embedding model | `BAAI/bge-small-en-v1.5`, 384-dim | Won the eval: vector hit@5 70% against 50% for `all-MiniLM-L6-v2` on the same chunks. Small enough for CPU containers. Chunks are 200 target / 240 max tokens: 400-token chunks scored worse (MRR 0.453 against 0.506), and MiniLM's 256-token window would truncate the rule-8.4 sizes silently | MiniLM (lower recall), bge-large (3x storage, slower; no eval number to justify it), a BGE query prefix (vector hit@5 dropped to 60%) |
+| Keyword search | `rank_bm25` in memory, plus a symbol-definition map | BM25 catches exact identifiers that vectors miss; the definition map sends "where is X defined" to the defining chunk (identifier questions 100% at rank 1) | OpenSearch/Elasticsearch: only when the in-memory index outgrows RAM |
+| Fusion and re-ranking | Weighted Reciprocal Rank Fusion (vector 1, BM25 1, definitions 3), test files demoted x0.6 | No score calibration needed across very different scorers; each weight was set by the eval | MS MARCO cross-encoder: built and kept opt-in (`hybrid_rerank`) because it lowered or did not change hit@5 in every comparison |
+| LLM (generation) | Local `Qwen/Qwen2.5-3B-Instruct`, fp16, with the strict citation prompt (owner decision 2026-10-19). Claude (`claude-haiku-5-5`) is used instead when `ANTHROPIC_API_KEY` is set | The 3B with the strict prompt matched the 7B on the answer eval (100% cited, 85% right file, 7/8 refusals) at half the latency, and fits in fp16 next to the embedder on an 8 GB GPU. **Licence: Qwen Research, non-commercial only**; a commercial deployment must switch to an Apache-2.0 model or Claude | Qwen2.5-1.5B (5% cited), Qwen2.5-7B 4-bit (same quality, twice as slow, fills the GPU), fine-tuning facts into a model (goes stale with every commit and cannot cite; PRD non-goal) |
+| Known answers | Verified-answers table plus an in-memory matcher | Admin-approved answers are served without search or generation when a new question is within 0.91 cosine of an approved question, mentions no code name the approved question lacks, and none of the cited files changed since approval | Serving unreviewed model answers from a cache (no human check), a lower threshold (the near-miss set produces false matches below 0.90) |
+| Frontend | Next.js 16 (App Router) + Tailwind | TypeScript and fast iteration. A route handler (`src/app/api/[...path]`) is the backend-for-frontend: the browser only talks to it, and it adds a **regular** API key server-side. `/api/admin/*` is forwarded only with the admin's own key from an HttpOnly, SameSite=Strict cookie set by `/api/admin-session` | Plain React SPA; a `NEXT_PUBLIC_` key (would ship in the JavaScript bundle) |
+| Containerization | Docker: `docker/backend.Dockerfile`, `frontend/Dockerfile`, `docker/docker-compose.yml` | Standard and portable; matches the Azure target. The backend image installs CPU PyTorch | — |
+| CI | GitHub Actions (`.github/workflows/ci.yml`) | Ruff, pytest, frontend lint/type-check/build, then image build and push to GHCR | — |
+| Deploy targets | GitHub (source), Hugging Face Spaces (public demo), Azure Container Apps (production target) | HF is the free demo link; Azure is the enterprise story the target roles name | Self-managed VM or bare Kubernetes as a first step |
 
 ## 4. Non-functional requirements
 
-- **Latency — retrieval:** ~35-40ms per call once the embedding model singleton is warm. Measured during Phase 1 verification on the CPU-only dev machine (two back-to-back `retrieve()` calls against a live Chroma collection). After Phase 2/3 (hybrid search over 88,144 chunks) one logged query took about 365 ms retrieval; the BM25 index is held in memory and rebuilt after each upload (about 10 s). More queries are needed before this is a trustworthy figure.
-- **Latency — generation:** roughly 50-60 seconds observed during Phase 1 verification for a single ~220-token answer from the local Qwen 1.5B model on the CPU-only dev machine (no CUDA). This is not acceptable for an interactive product and is the direct, measured justification for Phase 5 (API-based LLM as the default path). With the CUDA PyTorch build on the RTX 4060 the same local model answers in about 3 s (one logged query), so the local path is now usable as a fallback, though its citation discipline is still weak.
-- **Throughput:** not a current design target. This is a single-user local/demo deployment; no concurrency or load testing has been done.
-- **Availability:** no uptime target exists yet. Revisit once an Azure deployment is live and has real traffic.
-- **Data freshness:** currently none — the index only reflects whatever was on disk the last time someone manually ran the two ingestion scripts. See [`06_IMPLEMENTATION_PLAN.md`](06_IMPLEMENTATION_PLAN.md) Phase 4.
+All figures were measured on the dev machine (RTX 4060 Laptop, 8 GB, CUDA PyTorch `2.12.0+cu130`) and are single-user numbers, not load tests.
+
+- **Retrieval latency:** about 0.8-0.9 s per question in steady state over 146,435 chunks. The first question after start-up is slower (warm-up). BM25 scoring over every chunk is the largest part.
+- **Generation latency:** Qwen2.5-3B fp16, roughly 8-15 s per answer. It was 50-60 s for the 1.5B on a CPU-only PyTorch build.
+- **Verified answers:** returned without generation; the match takes the time of one question embedding plus one matrix product.
+- **Start-up:** about 70 s (embedding model, keyword and symbol index over 146,435 chunks, and the 3B on the GPU).
+- **GPU memory:** about 7.2 of 8.2 GB with the 3B and the embedder loaded. Local generation is serialized: one request at a time, so background drafting cannot overflow the card.
+- **Sync:** a no-change run over 7,546 files takes about 5 s. A full build of the corpus embeds 146k chunks in roughly 20 minutes on this GPU.
+- **Throughput and availability:** not design targets for this single-user deployment.
 
 ## 5. Security requirements
 
-- Secrets never committed: `.env` is gitignored (verified).
-- CORS: explicit origin allowlist, never a wildcard (verified in `backend/app/main.py`).
-- Auth: none implemented yet. Required before any deployment reachable outside a private demo — tracked as Phase 7, not optional.
-- Input validation: Pydantic field constraints (`min_length`, `ge`/`le`) already enforced on `QueryRequest`.
+- Secrets are never committed: `.env` and `frontend/.env.local` are gitignored.
+- CORS: an explicit, environment-controlled origin list, no credentials, GET/POST/DELETE and two headers only.
+- Auth: every route except `/health` requires `X-API-Key`. Keys are stored as SHA-256 hashes and shown once. `/admin/*` (dashboard, sync, verified answers, keys, stats) accepts only the bootstrap `SENTINEL_API_KEY`. The frontend's own key is a regular key without admin rights.
+- Admin sessions in the browser: an HttpOnly, SameSite=Strict cookie (Secure in production), 8 hours. The proxy never forwards `/admin/*` with the server key.
+- Input validation: Pydantic length and range limits on every request field. Uploads are capped at 10 MB, extension allow-listed, and stripped of path components.
+- Verified answers are served only after an admin approves them, and approval requires at least one valid `[S#]` citation.
 
 ## 6. Constraints
 
-- **Two runtimes to keep working: a CUDA dev machine (RTX 4060, 8 GB, PyTorch `2.12.0+cu130`) and CPU-only containers.** Phase 1 was verified on a CPU-only PyTorch build; the GPU build was installed later, on which embedding 88k chunks takes about 5 minutes (CPU took about 9 minutes for 24k chunks) and the local model becomes usable. The Docker image installs CPU PyTorch. Every model-loading change must be verified to actually run here before being called done — the Phase 1 `dtype=torch.float16` change was checked against a real matmul test and a real generation run specifically because float16 has a history of missing CPU kernels on older PyTorch builds. Don't assume a GPU-oriented fix "just works" on CPU; test it.
-- **ChromaDB has no built-in horizontal scaling.** Fine up to roughly hundreds of thousands of chunks; the decision log already anticipates migrating past that point rather than treating it as a surprise.
+- **Two runtimes must keep working:** the CUDA dev machine and CPU-only containers. Test every model-loading change on both. The container is CPU-only, so its realistic answer path is Claude; the local 3B on CPU is too slow for interactive use.
+- **Single writer to the index.** ChromaDB and the in-memory keyword index are owned by one process. Run the sync through `POST /admin/sync` while the API is up, and the CLI only while it is down.
+- **ChromaDB has no horizontal scaling.** Fine for one machine; migrate when that stops being true.
 
 ## 7. Open technical risks
 
-- No incremental ingestion — re-running the pipeline duplicates every chunk under new IDs (the `loader.py` fresh-UUID bug).
-- Local LLM generation latency (50-60s/answer) is not viable for any interactive use case, only for offline batch eval.
-- No authentication on a service intended to eventually be reachable outside localhost.
+- The Claude path has not run against the real API (no key available).
+- The Docker images and the CI workflow have not been run yet.
+- Retrieval misses 13 of 40 eval questions in the top 5.
+- Verified-answer matching recognises only 45% of paraphrases at a threshold that allows no false matches.
+- The keyword index lives in RAM and is rebuilt after uploads and syncs that change files.

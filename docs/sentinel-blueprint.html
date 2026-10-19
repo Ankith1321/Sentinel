@@ -155,17 +155,17 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
 
 <!-- OVERVIEW -->
 <section class="page" id="overview">
-  <p class="lede">A user asks a question. Sentinel finds the relevant source chunks, hands only those to an LLM, and returns an answer with citations. It works end to end and is measured: the right file now lands in the top 5 results 67.5% of the time, up from 40%.</p>
+  <p class="lede">A user asks a question. If an administrator has already approved an answer to it, Sentinel returns that answer from its database in a fraction of a second. Otherwise it searches the codebase, hands only the matching passages to the model, and returns an answer that cites its files. Everything is measured on fixed question sets.</p>
 
   <div class="grid g3">
-    <div class="card stat"><span>Retrieval hit@5 (40-question eval)</span><b>67.5%</b><small>was 40% before AST chunks and hybrid search; hit@10 is 77.5%</small></div>
-    <div class="card stat"><span>Answer generation (local model)</span><b>~3 s</b><small>on the RTX 4060; it took 50–60 s on CPU. The Claude API path is built but not yet run with a key</small></div>
-    <div class="card stat"><span>Tests</span><b>48 passing</b><small>unit and API tests, plus lint and a frontend build</small></div>
+    <div class="card stat"><span>Right file in the top 5 (40-question eval)</span><b>67.5%</b><small>was 40% at the start; MRR 0.559 over 146,435 chunks of current Superset</small></div>
+    <div class="card stat"><span>Local answers citing a source</span><b>100%</b><small>Qwen2.5-3B with the strict prompt; the right file 85% of the time; 7 of 8 off-topic questions refused</small></div>
+    <div class="card stat"><span>Verified answers</span><b>0.1 s</b><small>served from the database instead of 6-15 s of search and generation; zero false matches on the matching test</small></div>
   </div>
 
   <div class="grid">
     <h2>How a question becomes an answer</h2>
-    <p style="color:var(--muted)">Click a stage to see what it does and what's wrong with it.</p>
+    <p style="color:var(--muted)">Click a stage to see what it does.</p>
     <div class="rail" id="rail"></div>
     <div class="callout stepdetail" id="stepdetail"></div>
   </div>
@@ -173,7 +173,7 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   <div class="grid">
     <h2>Where the project is</h2>
     <div class="track" id="trackOverview" aria-hidden="true"></div>
-    <div class="callout"><b>You are here: Phase 10.</b> Phases 1–9 are built and verified. What remains: add an Anthropic API key (answers will cite sources properly), a visual pass in a browser, building the Docker images, and deploying to Azure. <a href="#plan" data-goto="plan" style="color:var(--accent)">See the full plan →</a></div>
+    <div class="callout"><b>You are here: Phase 10.</b> Phases 1-9 and 11 are built and verified. Still open: running CI and the Docker images, deploying to Azure, and trying the Claude path with a real key. <a href="#plan" data-goto="plan" style="color:var(--accent)">See the full plan →</a></div>
   </div>
 
   <div class="grid g2">
@@ -181,16 +181,17 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
       <ul>
         <li><b>1 Product:</b> who is it for and what does success look like?</li>
         <li><b>2 Technical:</b> which tools, and why those?</li>
-        <li><b>3 App flow:</b> what does the user click through?</li>
+        <li><b>3 App flow:</b> what do users and the admin click through?</li>
         <li><b>4 UI/UX:</b> how should every screen look?</li>
         <li><b>5 Schema:</b> what gets stored, and where?</li>
-        <li><b>6 Plan:</b> what do we build, in what order, and when is it done?</li>
+        <li><b>6 Plan:</b> what was built, in what order, and what is left?</li>
       </ul></div>
-    <div class="card"><h3>Three things to remember</h3>
+    <div class="card"><h3>Four things to remember</h3>
       <ul>
-        <li>Answers must cite their source files. An uncited claim is a bug.</li>
-        <li>Nothing counts as "better" until the eval set shows a number going up.</li>
-        <li>Auth is required before anyone outside localhost can reach it.</li>
+        <li>Answers must cite their source files. An uncited claim is flagged.</li>
+        <li>Only answers an admin approved are served from the database, and only while their sources are unchanged.</li>
+        <li>Nothing counts as better until an eval shows a number going up.</li>
+        <li>The project model (Qwen2.5-3B) is licensed for non-commercial use only.</li>
       </ul></div>
   </div>
 </section>
@@ -198,24 +199,27 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
 <!-- PRD -->
 <section class="page" id="prd" hidden>
   <div class="grid"><span class="eyebrow">Product requirements</span><h2>Help engineers get a grounded answer without interrupting a teammate.</h2>
-  <p class="lede" style="font-size:16px">A confident wrong answer about how code behaves is worse than no answer, because people build bugs on it. So every answer must be backed by retrieved source and cite it.</p></div>
+  <p class="lede" style="font-size:16px">A confident wrong answer about how code behaves is worse than no answer, because people build bugs on it. So every answer is backed by retrieved source or by an answer an admin approved, and it cites its files.</p></div>
 
-  <div class="grid g2">
-    <div class="card"><span class="pill p-next">Primary user</span><h3 style="margin-top:8px">Onboarding engineer</h3><p>Joined in the last 0–3 months and is about to own code they haven't read. Needs orientation without using up a senior's time.</p></div>
-    <div class="card"><span class="pill p-todo">Secondary user</span><h3 style="margin-top:8px">Cross-cutting engineer</h3><p>Experienced, but a change touches modules outside their usual area. Needs to understand an unfamiliar path fast.</p></div>
+  <div class="grid g3">
+    <div class="card"><span class="pill p-next">Primary user</span><h3 style="margin-top:8px">Onboarding engineer</h3><p>Joined in the last 0-3 months and is about to own code they haven’t read.</p></div>
+    <div class="card"><span class="pill p-todo">Secondary user</span><h3 style="margin-top:8px">Cross-cutting engineer</h3><p>Experienced, but a change touches modules outside their usual area.</p></div>
+    <div class="card"><span class="pill p-warn">Administrator</span><h3 style="margin-top:8px">Runs the deployment</h3><p>Approves verified answers, watches the dashboard, triggers syncs. The only role that sees the dashboard.</p></div>
   </div>
-  <div class="callout warn"><b>Not for:</b> customers or non-engineers asking product questions, general-purpose chat, code generation, or multi-tenant SaaS. One organization's codebase per deployment.</div>
+  <div class="callout warn"><b>Not for:</b> customers, general-purpose chat, code generation, or multi-tenant SaaS. <b>No model trained to answer from memory</b> (owner decision 2026-10-19).</div>
 
   <div class="grid">
     <h2>Success metrics</h2>
-    <div class="callout warn">Targets are provisional. Replace them with firm numbers after the first baseline run. A target set before any measurement is a guess.</div>
     <div class="scroll"><table>
-      <thead><tr><th>Metric</th><th>What it measures</th><th>Provisional target</th><th>Today</th></tr></thead>
+      <thead><tr><th>Metric</th><th>What it measures</th><th>Target</th><th>Today</th></tr></thead>
       <tbody>
-        <tr><td><b>Retrieval hit@5</b></td><td>% of eval questions where the right file is in the top 5 chunks</td><td>≥ 70%</td><td><span class="pill p-warn">67.5% (was 40%)</span></td></tr>
-        <tr><td><b>Groundedness</b></td><td>% of answer sentences supported by their cited source</td><td>≥ 90%</td><td><span class="pill p-todo">not measured</span></td></tr>
-        <tr><td><b>p95 latency</b> /query</td><td>End-to-end time for the slowest 5% of requests</td><td>&lt; 10 s on the API-LLM path</td><td><span class="pill p-warn">3.4 s local GPU (1 query); API untested</span></td></tr>
-        <tr><td><b>Uncited claims</b></td><td>Factual statements with no [S1]-style citation</td><td>0</td><td><span class="pill p-warn">local model often skips them</span></td></tr>
+        <tr><td><b>Retrieval hit@5</b></td><td>Right file in the top 5 search results (40 questions)</td><td>≥ 70%</td><td><span class="pill p-warn">67.5%</span></td></tr>
+        <tr><td><b>Citations</b></td><td>Local answers that cite a valid source</td><td>every factual claim</td><td><span class="pill p-done">100%</span></td></tr>
+        <tr><td><b>Right file cited</b></td><td>When search found it, does the answer cite it</td><td>—</td><td><span class="pill p-done">85%</span></td></tr>
+        <tr><td><b>Off-topic refusals</b></td><td>8 questions the codebase cannot answer</td><td>all</td><td><span class="pill p-warn">7 of 8</span></td></tr>
+        <tr><td><b>Verified-answer false matches</b></td><td>40 paraphrase and near-miss pairs</td><td>0</td><td><span class="pill p-done">0 (recall 45%)</span></td></tr>
+        <tr><td><b>Groundedness</b></td><td>Sentences supported by their cited source</td><td>≥ 90%</td><td><span class="pill p-todo">not measured</span></td></tr>
+        <tr><td><b>p95 latency</b></td><td>End-to-end, API path</td><td>&lt; 10 s</td><td><span class="pill p-todo">API path untested; local 8-15 s</span></td></tr>
       </tbody></table></div>
   </div>
 
@@ -224,133 +228,105 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
     <div class="cols">
       <div class="col"><h3><span class="pill p-done">Must-have</span></h3><ul>
         <li><b>/query returns a cited answer</b><span class="pill p-done">done</span></li>
-        <li><b>Embedding model loads once</b><span class="pill p-done">done</span></li>
-        <li><b>Incremental ingestion, no duplicates</b><span class="pill p-done">done</span></li>
-        <li><b>Eval set run at least once</b><span class="pill p-done">done</span></li>
-        <li><b>Auth outside localhost</b><span class="pill p-done">done</span></li></ul></div>
+        <li><b>Incremental ingestion and sync</b><span class="pill p-done">done</span></li>
+        <li><b>Eval sets run</b><span class="pill p-done">done</span></li>
+        <li><b>Auth, admin-only dashboard</b><span class="pill p-done">done</span></li></ul></div>
       <div class="col"><h3><span class="pill p-warn">Should-have</span></h3><ul>
-        <li><b>Hybrid retrieval (vector + BM25)</b><span class="pill p-done">done</span></li>
-        <li><b>AST-aware Python chunking</b><span class="pill p-done">done</span></li>
-        <li><b>Streaming responses</b><span class="pill p-done">done</span></li></ul></div>
+        <li><b>Hybrid retrieval + symbol index</b><span class="pill p-done">done</span></li>
+        <li><b>AST-aware chunking</b><span class="pill p-done">done</span></li>
+        <li><b>Streaming</b><span class="pill p-done">done</span></li>
+        <li><b>Verified-answers database</b><span class="pill p-done">done</span></li></ul></div>
       <div class="col"><h3><span class="pill p-todo">Could-have</span></h3><ul>
         <li><b>Multi-turn memory</b><span class="pill p-done">done</span></li>
-        <li><b>Drag-and-drop upload UI</b><span class="pill p-done">done</span></li>
-        <li><b>Code-vs-docs query classifier (PyTorch)</b><span>Lowest priority, do last</span></li></ul></div>
+        <li><b>Drag-and-drop upload</b><span class="pill p-done">done</span></li>
+        <li><b>Code-vs-docs classifier</b><span>Lowest priority, not started</span></li></ul></div>
     </div>
   </div>
 
-  <div class="grid g3">
-    <div class="card"><h3>Story 1</h3><p>"I ask how the chart caching layer works and get an answer citing the actual files, not a plausible guess."</p></div>
-    <div class="card"><h3>Story 2</h3><p>"I re-run ingestion after a code change and the index reflects it without doubling every chunk."</p></div>
-    <div class="card"><h3>Story 3</h3><p>"As a reviewer, I open the deployed link and get a working, cited answer on the first try, every time."</p></div>
-  </div>
   <div class="grid g2">
-    <div class="card"><h3>Risk: local model quality</h3><p>The small local model may miss the groundedness bar even with an eval set. That, not just speed, is why Phase 5 swaps in an API model.</p></div>
-    <div class="card"><h3>Risk: building before measuring</h3><p>Better chunking or hybrid search can't be proven to help without the eval baseline. Hence Phase 1.5.</p></div>
+    <div class="card"><h3>Risk: licence</h3><p>Qwen2.5-3B is licensed for non-commercial use only. For commercial use switch to an Apache-2.0 model (the 7B scored the same) or Claude.</p></div>
+    <div class="card"><h3>Risk: retrieval ceiling</h3><p>13 of 40 questions miss the top 5, mostly broad “how does X work” questions. No model can answer from a passage it never received.</p></div>
   </div>
 </section>
 
 <!-- TRD -->
 <section class="page" id="trd" hidden>
-  <div class="grid"><span class="eyebrow">Technical requirements</span><h2>One FastAPI service, one vector store, two lifecycles.</h2>
-  <p class="lede" style="font-size:16px">This document records why each choice was made. Check it before reversing a decision.</p></div>
+  <div class="grid"><span class="eyebrow">Technical requirements</span><h2>One FastAPI service, one vector store, one SQLite file.</h2>
+  <p class="lede" style="font-size:16px">This records why each choice was made. Every model and retrieval choice was decided by an eval run.</p></div>
 
   <div class="grid">
-    <h3>Build time (offline, manual today)</h3>
-    <div class="lane"><div class="node">Scan files</div><span class="arrow">→</span><div class="node">Load</div><span class="arrow">→</span><div class="node">Chunk</div><span class="arrow">→</span><div class="node">Embed</div><span class="arrow">→</span><div class="node ok">ChromaDB upsert</div></div>
-    <h3 style="margin-top:6px">Query time (online, per request)</h3>
-    <div class="lane"><div class="node">Embed question</div><span class="arrow">→</span><div class="node">Vector search</div><span class="arrow">→</span><div class="node">Top-k chunks</div><span class="arrow">→</span><div class="node">Build prompt</div><span class="arrow">→</span><div class="node err">LLM (slow)</div><span class="arrow">→</span><div class="node">Answer + sources</div></div>
-    <p style="color:var(--muted);font-size:14px">No queue, no worker, no load balancer. A single instance by design, not by oversight.</p>
+    <h3>Index time</h3>
+    <div class="lane"><div class="node">Scan</div><span class="arrow">→</span><div class="node">Load + hash</div><span class="arrow">→</span><div class="node">AST chunks</div><span class="arrow">→</span><div class="node">bge-small</div><span class="arrow">→</span><div class="node ok">ChromaDB + manifest</div><span class="arrow">⇢</span><div class="node">Sync: changed files only</div></div>
+    <h3 style="margin-top:6px">Query time</h3>
+    <div class="lane"><div class="node">Rewrite follow-up</div><span class="arrow">→</span><div class="node ok">Verified answer?</div><span class="arrow">→</span><div class="node">Vector + BM25 + definitions</div><span class="arrow">→</span><div class="node">Budget + prompt</div><span class="arrow">→</span><div class="node">Qwen2.5-3B / Claude</div><span class="arrow">→</span><div class="node">Answer checker</div></div>
   </div>
 
   <div class="grid">
     <h2>Stack decisions</h2><p style="color:var(--muted)">Open a row for the reasoning and what was rejected.</p>
     <div>
-      <details><summary><span class="t">API framework</span><span class="pill p-done">FastAPI</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Native async, Pydantic validation at the boundary, free OpenAPI docs.</dd><dt>Rejected</dt><dd>Flask (no native async without extra tooling). Django (too heavy for a single API with no admin or ORM need).</dd></dl></div></details>
-      <details><summary><span class="t">Vector store</span><span class="pill p-done">ChromaDB, local</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Zero extra infrastructure, fine up to roughly hundreds of thousands of vectors.</dd><dt>Rejected</dt><dd>Pinecone and Qdrant. Real options once it must scale past one machine; premature today.</dd></dl></div></details>
-      <details><summary><span class="t">Embedding model</span><span class="pill p-done">all-MiniLM-L6-v2 · 384d</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Fast on CPU, no per-call cost, adequate baseline quality.</dd><dt>Rejected</dt><dd>bge-large-en-v1.5 (1024d): better, but 3× the storage and slower on CPU. The upgrade waits for an eval number to justify it.</dd></dl></div></details>
-      <details><summary><span class="t">LLM</span><span class="pill p-warn">Qwen 1.5B local today · API planned</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>API models give much better grounded answers per dollar than a small local model.</dd><dt>Rejected</dt><dd>7B+ local models without quantization (not viable on CPU). Fine-tuning on the codebase (goes stale the moment code changes and cannot cite files).</dd></dl></div></details>
-      <details><summary><span class="t">Frontend</span><span class="pill p-done">Next.js 15 + Tailwind</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>TypeScript, fast iteration, room for API routes if a BFF layer is ever needed.</dd><dt>Rejected</dt><dd>Plain React SPA (no server-rendering story). SvelteKit (smaller ecosystem fit).</dd></dl></div></details>
-      <details><summary><span class="t">Containers</span><span class="pill p-done">Docker</span></summary><div class="body"><dl class="kv"><dt>Where</dt><dd><code>docker/backend.Dockerfile</code> and <code>docker/docker-compose.yml</code></dd><dt>Why</dt><dd>Standard, portable, matches the Azure target.</dd></dl></div></details>
-      <details><summary><span class="t">Deploy targets</span><span class="pill p-todo">HF Spaces + Azure</span></summary><div class="body"><dl class="kv"><dt>Why both</dt><dd>Hugging Face Spaces is the free public demo link (port 7860). Azure Container Apps is the enterprise story the target roles name.</dd><dt>Deferred</dt><dd>Self-managed VM or bare Kubernetes, until the core product works.</dd></dl></div></details>
+      <details><summary><span class="t">API framework</span><span class="pill p-done">FastAPI</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Async, Pydantic validation at the boundary, free OpenAPI docs.</dd><dt>Rejected</dt><dd>Flask, Django.</dd></dl></div></details>
+      <details><summary><span class="t">Stores</span><span class="pill p-done">ChromaDB + SQLite</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>No servers to run. Chroma holds 146,435 chunks; SQLite holds the manifest, conversations, logs, sync runs, verified answers and keys.</dd><dt>Later</dt><dd>Qdrant and PostgreSQL once it runs on more than one machine.</dd></dl></div></details>
+      <details><summary><span class="t">Embedding model</span><span class="pill p-done">bge-small-en-v1.5 · 384d</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Vector hit@5 70% against 50% for MiniLM on the same chunks.</dd><dt>Rejected</dt><dd>MiniLM, a BGE query prefix (60%), 400-token chunks (MRR 0.453).</dd></dl></div></details>
+      <details><summary><span class="t">Retrieval</span><span class="pill p-done">vector + BM25 + definitions</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Weighted fusion; definitions send “where is X defined” to the defining chunk (identifier questions 100% at rank 1).</dd><dt>Rejected</dt><dd>The MS MARCO cross-encoder: never improved the eval, kept opt-in.</dd></dl></div></details>
+      <details><summary><span class="t">LLM</span><span class="pill p-warn">Qwen2.5-3B local · Claude with a key</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>Owner decision. With the strict prompt it matched the 7B (100% cited, 85% right file) at half the latency, in fp16 on an 8 GB GPU.</dd><dt>Licence</dt><dd>Qwen Research: non-commercial use only.</dd><dt>Rejected</dt><dd>1.5B (5% cited), 7B 4-bit (same quality, twice as slow), training facts into a model.</dd></dl></div></details>
+      <details><summary><span class="t">Known answers</span><span class="pill p-done">verified-answers table</span></summary><div class="body"><dl class="kv"><dt>Rule</dt><dd>Served only when approved by an admin, within 0.91 cosine of the approved question, every code name covered, and no cited file changed.</dd><dt>Measured</dt><dd>0 false matches, 45% recall on 40 pairs.</dd></dl></div></details>
+      <details><summary><span class="t">Frontend</span><span class="pill p-done">Next.js 16 + Tailwind</span></summary><div class="body"><dl class="kv"><dt>Why</dt><dd>A server-side proxy holds a regular key; the admin key reaches the browser only as an HttpOnly cookie used for /admin.</dd></dl></div></details>
+      <details><summary><span class="t">Deploy</span><span class="pill p-todo">Docker + CI written, not run</span></summary><div class="body"><dl class="kv"><dt>Target</dt><dd>Azure Container Apps; Hugging Face Spaces for a free demo.</dd></dl></div></details>
     </div>
   </div>
 
   <div class="grid">
-    <h2>Non-functional requirements</h2>
+    <h2>Measured on the dev machine</h2>
     <div class="grid g3">
-      <div class="card stat"><span>Retrieval latency</span><b>~365 ms</b><small>hybrid over 88k chunks, one logged query. Needs more samples.</small></div>
-      <div class="card stat"><span>Generation latency</span><b>~3 s</b><small>local Qwen 1.5B on the RTX 4060. It took 50–60 s on CPU.</small></div>
-      <div class="card stat"><span>Throughput / uptime</span><b>no target</b><small>Single-user demo. No load testing yet.</small></div>
+      <div class="card stat"><span>Search</span><b>~0.85 s</b><small>steady state over 146,435 chunks</small></div>
+      <div class="card stat"><span>Local answer (3B)</span><b>8-15 s</b><small>RTX 4060, fp16; one generation at a time</small></div>
+      <div class="card stat"><span>Sync, nothing changed</span><b>~5 s</b><small>7,546 files hashed against the manifest</small></div>
     </div>
-    <div class="callout warn"><b>Data freshness is still manual for the Superset corpus:</b> re-run the chunker and build script after updating the checkout (stale chunks are cleaned up). Uploaded files index themselves in the background.</div>
   </div>
 
   <div class="grid g2">
     <div class="card"><h3>Security</h3><ul>
-      <li><span class="pill p-done">verified</span> <code>.env</code> is gitignored</li>
-      <li><span class="pill p-done">verified</span> CORS is an explicit allowlist, never a wildcard</li>
-      <li><span class="pill p-done">verified</span> <code>min_length</code> and <code>ge/le</code> on <code>QueryRequest</code></li>
-      <li><span class="pill p-done">verified</span> <code>X-API-Key</code> on every route except <code>/health</code>; keys stored hashed</li></ul></div>
+      <li><span class="pill p-done">verified</span> <code>X-API-Key</code> on every route except <code>/health</code>; keys stored hashed</li>
+      <li><span class="pill p-done">verified</span> <code>/admin/*</code> needs the admin key; the frontend holds a regular key</li>
+      <li><span class="pill p-done">verified</span> admin browser session is an HttpOnly, SameSite=Strict cookie</li>
+      <li><span class="pill p-done">verified</span> explicit CORS list, input limits, upload size/type/name checks</li></ul></div>
     <div class="card"><h3>Constraints and open risks</h3><ul>
-      <li>Two runtimes: a CUDA dev machine and CPU-only containers. Test model-loading changes on both.</li>
-      <li>ChromaDB has no horizontal scaling.</li>
-      <li>Docker images and CI are written but have not been built or run yet.</li>
-      <li>The real Anthropic API path has not been exercised without a key.</li></ul></div>
+      <li>One process writes to the index: sync through the API while it runs.</li>
+      <li>GPU: 7.2 of 8.2 GB in use with the 3B and the embedder.</li>
+      <li>The Claude path, CI and the Docker images have never run.</li>
+      <li>Containers are CPU-only, so their answer path should be Claude.</li></ul></div>
   </div>
 </section>
 
 <!-- APP FLOW -->
 <section class="page" id="flow" hidden>
-  <div class="grid"><span class="eyebrow">App flow</span><h2>Today: one screen. After Phase 6 and 8: chat, upload, and session history.</h2></div>
-  <div class="seg" role="group" aria-label="Flow version">
-    <button data-flow="now" aria-pressed="true">Today (v1)</button>
-    <button data-flow="target" aria-pressed="false">Target</button>
+  <div class="grid"><span class="eyebrow">App flow</span><h2>Chat and Documents for everyone; the dashboard only for the admin.</h2></div>
+  <div class="seg" role="group" aria-label="Flow">
+    <button data-flow="now" aria-pressed="true">Asking a question</button>
+    <button data-flow="target" aria-pressed="false">Administrator</button>
   </div>
 
   <div id="flow-now" class="grid">
-    <div class="lane">
-      <div class="node">Open /</div><span class="arrow">→</span><div class="node">Type question</div><span class="arrow">→</span><div class="node">Click Ask Sentinel</div><span class="arrow">→</span>
-      <div class="grid" style="gap:8px"><div class="node ok">Success: answer + source cards</div><div class="node err">Error: red panel above the answer</div></div>
-    </div>
-    <p style="color:var(--muted);font-size:14px">Either outcome returns to the input. There is no session, no history, and no navigation.</p>
+    <div class="lane"><div class="node">Open /</div><span class="arrow">→</span><div class="node">Resume or start a session</div><span class="arrow">→</span><div class="node">Ask (sources 1-15)</div></div>
+    <div class="lane"><div class="node">Rewrite follow-up</div><span class="arrow">→</span><div class="node ok">Approved answer matches → Verified badge</div></div>
+    <div class="lane"><div class="node">No match</div><span class="arrow">→</span><div class="node">Search + model, tokens stream in</div><span class="arrow">→</span><div class="node">Sources + Helpful / Not helpful</div><span class="arrow">→</span><div class="node err">No valid citation → review note</div></div>
+    <p style="color:var(--muted);font-size:14px">Filters (language, path, mode) skip the verified database. Errors show as a failed bubble in the thread.</p>
   </div>
 
   <div id="flow-target" class="grid" hidden>
-    <div class="lane">
-      <div class="node">Open app</div><span class="arrow">→</span>
-      <div class="grid" style="gap:8px"><div class="node new">No saved session → POST /sessions</div><div class="node new">Saved session → GET /sessions/{id}</div></div><span class="arrow">→</span>
-      <div class="node new">Chat thread</div>
-    </div>
-    <div class="lane">
-      <div class="node new">Send question</div><span class="arrow">→</span><div class="node new">POST /query/stream · tokens appear live</div><span class="arrow">→</span><div class="node new">👍 / 👎 on the answer</div>
-    </div>
-    <div class="lane">
-      <div class="node new">Chat</div><span class="arrow">⇄</span><div class="node new">Upload → POST /documents/upload → poll GET /jobs/{id}</div>
-    </div>
-    <div class="lane">
-      <div class="node new">Chat</div><span class="arrow">⇄</span><div class="node new">Session list → switch or start new session</div>
-    </div>
-    <p style="color:var(--muted);font-size:14px">Dashed borders mean not built yet.</p>
+    <div class="lane"><div class="node">Open /dashboard</div><span class="arrow">→</span><div class="node">Sign in with the admin key</div><span class="arrow">→</span><div class="node ok">HttpOnly cookie, 8 hours</div></div>
+    <div class="lane"><div class="node">Draft answers (60 starter questions or your own)</div><span class="arrow">→</span><div class="node">Pending</div><span class="arrow">→</span><div class="node ok">Edit and approve (needs a citation)</div></div>
+    <div class="lane"><div class="node">Recent chat answer</div><span class="arrow">→</span><div class="node">Make verified</div><span class="arrow">→</span><div class="node">Pending</div></div>
+    <div class="lane"><div class="node">Sync changes a cited file</div><span class="arrow">→</span><div class="node err">Stale, not served</div><span class="arrow">→</span><div class="node">Approve again or re-draft</div></div>
   </div>
 
   <div class="grid">
     <h2>Screens</h2>
     <div>
-      <details open><summary><span class="t">Chat thread</span><span class="pill p-todo">replaces today's single Q&amp;A</span></summary><div class="body">
-        <dl class="kv"><dt>Entry</dt><dd>App load. Resumes the last session from local storage, else creates one.</dd>
-        <dt>Shows</dt><dd>Full history. Each answer carries its own source cards, since different turns have different sources.</dd>
-        <dt>Top-k</dt><dd>A 1–15 slider. No backend change needed; <code>QueryRequest.top_k</code> already has that range.</dd>
-        <dt>Streaming</dt><dd><code>POST /query/stream</code> read with <code>fetch</code>, not <code>EventSource</code>. EventSource cannot send the <code>X-API-Key</code> header and only supports GET.</dd>
-        <dt>Errors</dt><dd>Render as a failed message bubble inline in the thread, not a page banner.</dd></dl></div></details>
-      <details><summary><span class="t">Upload</span><span class="pill p-todo">Phase 8</span></summary><div class="body">
-        <dl class="kv"><dt>Entry</dt><dd>Explicit navigation from chat. Never automatic, never blocking.</dd>
-        <dt>Accepts</dt><dd><code>.py</code> <code>.md</code> <code>.pdf</code> <code>.docx</code> <code>.txt</code> by drag-and-drop or picker.</dd>
-        <dt>Behavior</dt><dd>Submits to <code>POST /documents/upload</code>, which returns a job id at once. The UI shows "processing" and polls <code>GET /jobs/{id}</code>. No spinner that implies "almost done".</dd></dl></div></details>
-      <details><summary><span class="t">Session history</span><span class="pill p-todo">Phase 6</span></summary><div class="body">
-        <dl class="kv"><dt>Entry</dt><dd>A list of past sessions from the chat screen.</dd><dt>Does</dt><dd>Resume one or start new. No sharing and no multi-user access control, matching the "no users table" decision.</dd></dl></div></details>
+      <details open><summary><span class="t">Chat</span><span class="pill p-done">everyone</span></summary><div class="body"><dl class="kv"><dt>Shows</dt><dd>Sessions sidebar, streamed answers with citation chips, source cards per answer, review notes, verified badges, feedback.</dd><dt>Transport</dt><dd><code>POST /query/stream</code> over <code>fetch</code>, because <code>EventSource</code> cannot send a header.</dd></dl></div></details>
+      <details><summary><span class="t">Documents</span><span class="pill p-done">everyone</span></summary><div class="body"><dl class="kv"><dt>Shows</dt><dd>Drag-and-drop upload with job status; Uploaded (removable) and Codebase (read-only) views.</dd></dl></div></details>
+      <details><summary><span class="t">Dashboard</span><span class="pill p-warn">admin only</span></summary><div class="body"><dl class="kv"><dt>Shows</dt><dd>Status, usage, questions per day, eval history, recent questions, the verified-answer review queue, syncs, uploads, system, and the plan.</dd><dt>Others see</dt><dd>A sign-in form, and no Dashboard link in the header.</dd></dl></div></details>
     </div>
-    <div class="callout warn"><b>Deliberately not built:</b> account creation or login screens (auth is an API-key header, not a UI flow), and any settings screen beyond the top-k slider.</div>
   </div>
 </section>
 
@@ -363,7 +339,7 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
     <div class="swatches" id="swatches"></div>
   </div>
 
-  <div class="grid"><h2>Try the four states</h2>
+  <div class="grid"><h2>The four answer states (shown on the original single-question page)</h2>
     <div class="seg" role="group" aria-label="UI state" id="stateSeg">
       <button data-state="empty" aria-pressed="true">Empty</button><button data-state="loading" aria-pressed="false">Loading</button><button data-state="error" aria-pressed="false">Error</button><button data-state="success" aria-pressed="false">Success</button>
     </div>
@@ -379,30 +355,30 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
         <li style="font-size:14px;color:var(--ink)">text-sm <span class="mono" style="font-size:11px;color:var(--muted)">body, previews</span></li>
         <li style="font-size:12px;color:var(--ink)">text-xs <span class="mono" style="font-size:11px;color:var(--muted)">metadata, distance</span></li></ul></div>
     <div class="card"><h3>Layout</h3><ul>
-      <li>Single column, <code>max-w-5xl</code>, centered, <code>px-6 py-10</code></li>
+      <li>Chat and Documents: <code>max-w-5xl</code>; Dashboard: <code>max-w-6xl</code></li>
       <li>Cards: <code>rounded-2xl</code>, bordered, no shadow</li>
-      <li>No sidebar or top nav yet</li>
-      <li>Answer is a <code>&lt;pre&gt;</code> block so citation formatting survives</li></ul></div>
+      <li>Header nav: Chat, Documents, and Dashboard for the admin</li>
+      <li>Every page fits a 390 px phone screen without sideways scrolling</li></ul></div>
   </div>
 
   <div class="grid"><h2>Rules for any new screen</h2>
     <div class="grid g3">
-      <div class="card"><h3>Stay in palette</h3><p>Zinc, white, red. Update this brief before adding any new color.</p></div>
+      <div class="card"><h3>Stay in palette</h3><p>Zinc, white and red, plus amber (review), emerald (verified), one chart blue and labelled status dots. Add any new color to the brief first.</p></div>
       <div class="card"><h3>Reuse the card</h3><p><code>rounded-2xl</code>, <code>zinc-900</code> fill, <code>zinc-800</code> border. No new container style per screen.</p></div>
       <div class="card"><h3>States persist</h3><p>Loading and error are rendered states, not toasts. A 60-second wait makes a vanishing toast read as broken.</p></div>
     </div>
-    <div class="callout warn"><b>Known defect:</b> the loading caption is a <code>&lt;p&gt;</code> nested inside the <code>&lt;button&gt;</code>, which is invalid HTML. Move it out. The textarea staying editable while loading is a deliberate exception to rule 8.7, so users can draft the next question; the submit button blocks double-sends.</div>
+    <div class="callout"><b>Deliberate exception:</b> the chat textarea stays editable while an answer streams, so the next question can be drafted; the send button turns into Stop.</div>
   </div>
 </section>
 
 <!-- SCHEMA -->
 <section class="page" id="schema" hidden>
-  <div class="grid"><span class="eyebrow">Backend schema</span><h2>ChromaDB keeps searching. A new SQLite file keeps everything else.</h2>
-  <p class="lede" style="font-size:16px">Built in <code>backend/app/db.py</code> (SQLite, <code>data/sentinel.db</code>). Migrate to Postgres only if it ever runs as more than one instance.</p></div>
+  <div class="grid"><span class="eyebrow">Backend schema</span><h2>ChromaDB searches. SQLite remembers everything else.</h2>
+  <p class="lede" style="font-size:16px">Built in <code>backend/app/db.py</code> (<code>data/sentinel.db</code>). Existing databases upgrade in place. Pick a table to see its columns.</p></div>
 
   <div class="grid g2">
-    <div class="card"><span class="pill p-done">exists today</span><h3 style="margin-top:8px">ChromaDB</h3><p>Vectors, chunk text, and chunk metadata (<code>source_id</code>, <code>path</code>, <code>language</code>, <code>title</code>, <code>chunk_index</code>). Anything that needs similarity search.</p></div>
-    <div class="card"><span class="pill p-done">built</span><h3 style="margin-top:8px">SQLite</h3><p>Anything relational: ingested-document tracking, sessions, messages, feedback, jobs, API keys.</p></div>
+    <div class="card"><span class="pill p-done">built</span><h3 style="margin-top:8px">ChromaDB</h3><p>146,435 chunks: embedding, text and metadata (<code>source_id</code>, <code>path</code>, <code>language</code>, <code>title</code>, <code>chunk_index</code>). The keyword and symbol indexes are built from it in memory.</p></div>
+    <div class="card"><span class="pill p-done">built</span><h3 style="margin-top:8px">SQLite</h3><p>The file manifest, jobs, sessions, messages, feedback, query log, sync runs, verified answers and API keys.</p></div>
   </div>
 
   <div class="grid"><h2>Tables</h2>
@@ -411,29 +387,18 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   </div>
 
   <div class="grid"><h2>How tables connect</h2>
-    <div class="lane">
-      <div class="node">sessions</div><span class="arrow">1 → many</span><div class="node">messages</div><span class="arrow">1 → 0..1</span><div class="node">feedback</div>
-    </div>
-    <div class="lane">
-      <div class="node">documents</div><span class="arrow">1 → many</span><div class="node">jobs</div><span class="arrow" style="font-size:12px">· Chroma chunk ids are <code>{documents.id}::chunk_{n}</code></span>
-    </div>
-    <div class="lane"><div class="node">api_keys</div><span class="arrow" style="font-size:12px">standalone: keys are stored hashed, shown once</span></div>
+    <div class="lane"><div class="node">sessions</div><span class="arrow">1 → many</span><div class="node">messages</div><span class="arrow">1 → many</span><div class="node">feedback</div></div>
+    <div class="lane"><div class="node">documents</div><span class="arrow">1 → many</span><div class="node">jobs</div><span class="arrow" style="font-size:12px">· chunk ids are <code>{documents.id}::chunk_{n}</code></span></div>
+    <div class="lane"><div class="node">verified_answers</div><span class="arrow" style="font-size:12px">records the content hash of every cited <code>documents.path</code> at approval</span></div>
+    <div class="lane"><div class="node">query_log</div><span class="arrow" style="font-size:12px">points at <code>messages</code> and <code>verified_answers</code>; <code>sync_runs</code> and <code>api_keys</code> stand alone</span></div>
   </div>
 
-  <div class="callout warn"><b>Re-indexing rule.</b> When a file changes, delete all its old chunks from Chroma by <code>source_id</code> first, then upsert the new ones. Upsert alone only overwrites ids that still exist, so a file shrinking from 10 chunks to 6 would leave chunks 7–10 in the index serving stale content. Do the same for removed or renamed files.</div>
-
-  <div class="grid g2">
-    <div class="card"><h3>Deliberately not built</h3><ul>
-      <li><b>No users table.</b> Auth is an API key, not accounts.</li>
-      <li><b>No full-text-search table.</b> BM25 runs in-process until that's a measured bottleneck.</li>
-      <li><b>No chunks table.</b> Delete by <code>source_id</code> filter in Chroma instead.</li></ul></div>
-    <div class="card"><h3>Identity vs. change</h3><p><code>documents.id</code> is derived from the path, so it stays stable across runs. <code>content_hash</code> (SHA-256) is what says whether the file changed. This replaces today's fresh-UUID-per-run bug.</p></div>
-  </div>
+  <div class="callout warn"><b>Re-indexing rule.</b> When a file changes, upsert its new chunks first, then delete its chunk ids that no longer exist. A search never sees the file missing, and a shrunken file leaves nothing stale behind.</div>
 </section>
 
 <!-- PLAN -->
 <section class="page" id="plan" hidden>
-  <div class="grid"><span class="eyebrow">Implementation plan</span><h2>Eleven phases: ten built and verified, deployment still to do.</h2>
+  <div class="grid"><span class="eyebrow">Implementation plan</span><h2>Twelve phases: eleven built, deployment still to do.</h2>
   <p class="lede" style="font-size:16px">This is the current source of truth for what "done" means. The old roadmap in CONTEXT.md is history.</p></div>
 
   <div class="track" id="trackPlan" aria-hidden="true"></div>
@@ -442,7 +407,7 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   </div>
   <div id="phases"></div>
 
-  <div class="callout"><b>Why 1.5 jumped the queue.</b> Phases 2 and 3 are each justified by a hit-rate number going up. Without a baseline from the eval set there is no way to know whether either helped. The full observability stack can wait for Phase 9; the minimal eval set cannot.</div>
+  <div class="callout"><b>The rule behind the order:</b> measure on the fixed eval sets before and after every change, and keep only what the numbers support. That is why the eval set (1.5) came before chunking and retrieval.</div>
 </section>
 
 <p class="foot">Source documents live in <span class="mono">docs/01_PRD.md</span> through <span class="mono">docs/06_IMPLEMENTATION_PLAN.md</span> and remain the source of truth. This page is a reading view of them.</p>
@@ -453,19 +418,20 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 
   var PH=[
-    {n:'1',t:'Fix what\'s broken',s:'done',d:'/query returns a cited answer over real HTTP, the embedding model is a singleton, no dead code, the frontend renders success and error states.',v:'Verified live in the first working session.'},
-    {n:'1.5',t:'Minimal eval set',s:'done',d:'40 questions with expected paths chosen from the Superset repo; a runner reporting hit@1, hit@5, hit@10 and MRR per question type and listing every miss.',v:'Baseline recorded: hit@5 40%, MRR 0.267.'},
-    {n:'2',t:'Chunking upgrade',s:'done',d:'AST-based Python chunks, TS/JS and Markdown boundaries, token-sized (200, because the embedder window is 256), file path on every chunk, license boilerplate stripped, noise dropped.',v:'MiniLM vector hit@5 went 40% to 50% on the same eval.'},
-    {n:'3',t:'Retrieval upgrade',s:'done',d:'BM25 + vector with Reciprocal Rank Fusion, language/path filters, test-file demotion, bge-small embeddings. Cross-encoder built but off: it did not help.',v:'Default hybrid: hit@5 67.5%, hit@10 77.5%, MRR 0.506 (was 40%, 50%, 0.267).'},
-    {n:'4',t:'Ingestion API',s:'done',d:'Upload returns a job id at once and indexes in the background; unchanged files are skipped by SHA-256; delete removes chunks. GET /documents, GET /jobs/{id}, DELETE /documents/{id}.',v:'Run live: indexed in ~10 s, re-upload was a no-op, new content retrievable, delete worked. PDF/DOCX not tried with real files.'},
-    {n:'5',t:'LLM upgrade',s:'done',d:'Anthropic provider (default Claude Haiku) with local Qwen fallback, streaming over SSE, whole-chunk context budget. Not yet run against the real API.',v:'Local path verified live (~3 s on GPU). Anthropic path covered by tests with a fake client only.'},
-    {n:'6',t:'Conversation memory',s:'done',d:'Sessions and messages stored with sources; last 10 turns go in the prompt; follow-ups are rewritten into standalone queries.',v:'Live two-turn test: "it" became "the BaseDAO class" before retrieval.'},
-    {n:'7',t:'Authentication',s:'done',d:'X-API-Key on every route except /health, keys hashed, admin routes for create/list/revoke, proxy keeps the key off the browser.',v:'401 without a key on every protected route; revoked keys stop working.'},
-    {n:'8',t:'Frontend upgrade',s:'done',d:'Streaming chat with citation chips and source cards, sessions sidebar, sources slider, feedback buttons, inline errors, drag-and-drop Documents page.',v:'Passes tsc, eslint and next build; proxy tested with curl. Not yet reviewed in a browser.'},
-    {n:'9',t:'Observability',s:'done',d:'Every query stored with retrieved ids and timings; feedback stored; GET /admin/stats shows volume, latency and thumbs-up ratio.',v:'Stats endpoint returns live data. No stats page in the UI.'},
-    {n:'10',t:'Deploy and CI/CD',s:'next',d:'CI workflow, backend and frontend Dockerfiles and compose are written. Still to do: build the images, deploy to Azure Container Apps, and add an Anthropic key.',v:'Needs Docker running, an Azure subscription and registry secrets.'}
+    {n:'1',t:'Fix what’s broken',s:'done',d:'/query returns a cited answer, singleton models, no dead code, error states rendered.',v:'Verified live.'},
+    {n:'1.5',t:'Minimal eval set',s:'done',d:'40 questions with expected files and a runner reporting hit@1/5/10 and MRR.',v:'Baseline hit@5 40%.'},
+    {n:'2',t:'Chunking upgrade',s:'done',d:'AST Python chunks, TS/JS and Markdown boundaries, 200-token chunks with file paths, licence stripped.',v:'Vector hit@5 40% → 50%.'},
+    {n:'3',t:'Retrieval upgrade',s:'done',d:'Vector + BM25 + symbol definitions with weighted fusion, filters, test-file demotion, bge-small, archived docs excluded.',v:'hit@5 67.5%, MRR 0.559 on 146,435 chunks.'},
+    {n:'4',t:'Ingestion and sync',s:'done',d:'Background uploads with hash checks, plus an incremental corpus sync with a manifest.',v:'No-change sync ~5 s; a real edit and revert both handled.'},
+    {n:'5',t:'LLM upgrade',s:'next',d:'Qwen2.5-3B fp16 with the strict prompt (owner decision; non-commercial licence), Claude with a key, streaming, context budget.',v:'Claude path not yet run against the real API.'},
+    {n:'6',t:'Conversation memory',s:'done',d:'Sessions, messages with sources, follow-up rewriting.',v:'Live two-turn test.'},
+    {n:'7',t:'Authentication',s:'done',d:'API keys on every route, admin key for /admin, regular key in the frontend, HttpOnly admin cookie.',v:'Nine live access checks.'},
+    {n:'8',t:'Frontend upgrade',s:'done',d:'Chat, documents, admin dashboard, review queue, verified badges.',v:'Browser-checked at desktop and 390 px.'},
+    {n:'9',t:'Observability',s:'done',d:'Query log, feedback, three eval suites, admin dashboard.',v:'Dashboard live.'},
+    {n:'10',t:'Deploy and CI/CD',s:'next',d:'Workflow, Dockerfiles and compose written.',v:'Not run; no Azure deployment yet.'},
+    {n:'11',t:'Verified answers',s:'done',d:'Admin-approved answers served from SQLite on a safe match; staleness on source change; 60 starter questions drafted for review.',v:'0.1 s answers; 0 false matches.'}
   ];
-  var SL={done:['p-done','done'],next:['p-next','next'],todo:['p-todo','later']};
+  var SL={done:['p-done','done'],next:['p-next','open'],todo:['p-todo','later']};
 
   function track(el){
     el.innerHTML=PH.map(function(p){return '<i class="'+(p.s==='done'?'done':p.s==='next'?'next':'')+'" title="Phase '+p.n+' · '+p.t+'"></i>'}).join('');
@@ -484,14 +450,15 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   })});
 
   var ST=[
-    {n:'Scan',s:'done',d:'Walks the Superset repo, filtering by extension (.py .md .mdx .js .jsx .ts .tsx) and skipping node_modules, .git and similar.'},
-    {n:'Load',s:'done',d:'Reads each file into a record with a stable id (hash of its relative path) and a SHA-256 content hash, so re-indexing never duplicates chunks.'},
-    {n:'Chunk',s:'done',d:'Python splits at function and class boundaries with ast, TS/JS at top-level declarations, Markdown at headings. About 200 tokens each, every chunk starts with its file path, license boilerplate removed. 88,144 chunks.'},
-    {n:'Embed',s:'done',d:'bge-small-en-v1.5 (it beat MiniLM: vector hit@5 70% vs 50%), normalized, upserted into ChromaDB. Runs on the GPU in about 5 minutes for the full corpus. The model loads once.'},
-    {n:'Retrieve',s:'done',d:'Vector search plus BM25 keyword search, merged with Reciprocal Rank Fusion, with test files down-weighted. Best MRR (0.506) of everything tried. Still misses 13 of 40 broad questions.'},
-    {n:'Re-rank',s:'warn',d:'Built, but off by default: the generic cross-encoder lowered or did not change hit@5 in every comparison, so the eval said not to ship it.'},
-    {n:'Generate',s:'warn',d:'Claude (Haiku) when an API key is set, local Qwen otherwise; both stream. The API path is tested only against a fake client. Local Qwen answers in ~3 s on GPU but often skips citations.'},
-    {n:'Serve',s:'done',d:'FastAPI with streaming, sessions, uploads, feedback, stats and API-key auth. Next.js chat and documents UI behind a proxy that keeps the key off the browser.'}
+    {n:'Scan',s:'done',d:'7,546 corpus files (.py .md .mdx .js .jsx .ts .tsx), skipping build folders and Docusaurus’ archived per-release doc copies.'},
+    {n:'Load',s:'done',d:'Stable id per file (hash of its relative path) and a SHA-256 content hash, so re-indexing never duplicates chunks.'},
+    {n:'Chunk',s:'done',d:'Python at function and class boundaries, TS/JS at top-level declarations, Markdown at headings; about 200 tokens each with the file path on top.'},
+    {n:'Embed',s:'done',d:'bge-small-en-v1.5, normalized, into ChromaDB. A full build takes about 20 minutes on the GPU; the sync then re-embeds only changed files.'},
+    {n:'Verified?',s:'done',d:'An approved answer is returned in about 0.1 s when the question matches it closely, names no extra code symbol, and none of its sources changed.'},
+    {n:'Retrieve',s:'done',d:'Vector search, BM25 and the symbol-definition index, merged with weighted Reciprocal Rank Fusion; test files demoted.'},
+    {n:'Generate',s:'warn',d:'Qwen2.5-3B (fp16, strict prompt) or Claude with a key; streamed. Licence: non-commercial. Claude not yet tried for real.'},
+    {n:'Check',s:'done',d:'Flags answers with no valid citation or with names absent from the passages; the UI shows a review note.'},
+    {n:'Serve',s:'done',d:'Streaming API with sessions, feedback, uploads and auth; chat UI and an admin-only dashboard.'}
   ];
   var PC={done:['p-done','working'],warn:['p-warn','has a known flaw'],todo:['p-todo','not built'],bad:['p-bad','too slow']};
   $('#rail').innerHTML=ST.map(function(x,i){return '<button class="step" data-i="'+i+'" aria-pressed="'+(i===4)+'"><b>'+x.n+'</b><span class="pill '+PC[x.s][0]+'">'+PC[x.s][1]+'</span></button>'}).join('');
@@ -503,13 +470,15 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   showStep(4);
 
   var TB={
-    documents:{p:'Phase 4',w:'Every ingested file. Makes hash-based incremental ingestion possible.',c:[['id','TEXT PK','Stable id derived from path, not a fresh UUID'],['path','TEXT UNIQUE','Source file path'],['source_type','TEXT','code, markdown; later pdf, docx'],['language','TEXT','Optional'],['content_hash','TEXT','SHA-256 of the file. Indexed.'],['chunk_count','INTEGER','Default 0'],['first_indexed_at','TEXT','ISO 8601'],['last_indexed_at','TEXT','ISO 8601']]},
-    jobs:{p:'Phase 4',w:'One row per background upload, so the API can reply with a job id and the UI can poll.',c:[['id','TEXT PK','Job id returned by upload'],['document_id','TEXT FK','References documents; set null on delete'],['status','TEXT','queued, processing, done, unchanged or failed'],['filename','TEXT','Original file name'],['error','TEXT','Failure message, if any'],['created_at','TEXT','ISO 8601'],['finished_at','TEXT','ISO 8601, null until done']]},
-    sessions:{p:'Phase 6',w:'One row per conversation.',c:[['id','TEXT PK','Session id'],['created_at','TEXT','ISO 8601'],['last_active_at','TEXT','ISO 8601']]},
-    messages:{p:'Phase 6',w:'Each turn in a conversation.',c:[['id','INTEGER PK','Autoincrement'],['session_id','TEXT FK','References sessions; cascade delete. Indexed.'],['role','TEXT','user or assistant'],['content','TEXT','Message text'],['sources_json','TEXT','Assistant turns only: the source cards shown with that answer'],['created_at','TEXT','ISO 8601']]},
-    feedback:{p:'Phase 9',w:'Thumbs up or down on an assistant message.',c:[['id','INTEGER PK','Autoincrement'],['message_id','INTEGER FK','References messages; cascade delete'],['rating','INTEGER','-1 or 1'],['created_at','TEXT','ISO 8601']]},
-    query_log:{p:'Phase 9',w:'One row per answered question, read through GET /admin/stats.',c:[['id','INTEGER PK','Autoincrement'],['session_id','TEXT','Optional'],['question','TEXT','As asked'],['standalone_question','TEXT','After follow-up rewriting'],['retrieved_ids','TEXT','JSON array of chunk ids'],['retrieval_ms','INTEGER','Retrieval time'],['generation_ms','INTEGER','Generation time'],['model','TEXT','Model that answered'],['created_at','TEXT','ISO 8601']]},
-    api_keys:{p:'Phase 7',w:'Access keys. The raw key is never stored.',c:[['id','TEXT PK','Key id'],['key_hash','TEXT UNIQUE','Hash of the key'],['label','TEXT','Optional name'],['created_at','TEXT','ISO 8601'],['revoked_at','TEXT','Null while active']]}
+    documents:{p:'Manifest',w:'Every indexed file: corpus files from the build and sync, plus uploads.',c:[['id','TEXT PK','Hash of the path'],['path','TEXT UNIQUE','Relative path'],['source_type','TEXT','code or upload'],['language','TEXT',''],['content_hash','TEXT','SHA-256 of the text'],['chunk_count','INTEGER',''],['first_indexed_at','TEXT',''],['last_indexed_at','TEXT','']]},
+    verified_answers:{p:'Phase 11',w:'Admin-approved answers served without search.',c:[['id','INTEGER PK',''],['question','TEXT',''],['answer','TEXT','Must cite [S#]'],['sources_json','TEXT','Cited source cards'],['source_hashes_json','TEXT','Hash of each cited file at approval'],['status','TEXT','pending, approved, stale, rejected'],['origin','TEXT','generated or chat'],['stale_reason','TEXT',''],['times_served','INTEGER',''],['created_at / reviewed_at / last_served_at','TEXT','']]},
+    sync_runs:{p:'Phase 4',w:'One row per incremental sync.',c:[['id','INTEGER PK',''],['status','TEXT','running, done, failed'],['pulled','INTEGER','git pull first'],['commit_before / commit_after','TEXT',''],['added / changed / removed / unchanged','INTEGER',''],['chunks_written / chunks_deleted','INTEGER',''],['verified_stale','INTEGER','answers marked stale'],['errors_json / error','TEXT','']]},
+    query_log:{p:'Phase 9',w:'One row per answered question.',c:[['session_id','TEXT',''],['question / standalone_question','TEXT',''],['retrieved_ids','TEXT','JSON'],['retrieval_ms / generation_ms','INTEGER',''],['model','TEXT','or verified-answer'],['needs_review','INTEGER','checker result'],['message_id','INTEGER',''],['verified_answer_id','INTEGER','']]},
+    jobs:{p:'Phase 4',w:'Background uploads.',c:[['id','TEXT PK','Returned by upload'],['document_id','TEXT FK',''],['filename','TEXT',''],['status','TEXT','queued, processing, done, unchanged, failed'],['error','TEXT',''],['created_at / finished_at','TEXT','']]},
+    sessions:{p:'Phase 6',w:'One row per conversation.',c:[['id','TEXT PK',''],['created_at','TEXT',''],['last_active_at','TEXT','']]},
+    messages:{p:'Phase 6',w:'Each turn.',c:[['id','INTEGER PK',''],['session_id','TEXT FK',''],['role','TEXT','user or assistant'],['content','TEXT',''],['sources_json','TEXT','assistant turns'],['created_at','TEXT','']]},
+    feedback:{p:'Phase 9',w:'Helpful or not, per answer.',c:[['message_id','INTEGER FK',''],['rating','INTEGER','-1 or 1'],['created_at','TEXT','']]},
+    api_keys:{p:'Phase 7',w:'Regular keys, stored hashed. The admin key lives only in .env.',c:[['id','TEXT PK',''],['key_hash','TEXT UNIQUE','SHA-256'],['label','TEXT',''],['created_at','TEXT',''],['revoked_at','TEXT','']]}
   };
   function showTbl(k){
     var t=TB[k];
@@ -520,9 +489,9 @@ td code,.card code,.body code,.callout code{font-family:var(--mono);font-size:12
   }
   $('#tblpick').innerHTML=Object.keys(TB).map(function(k){return '<button data-k="'+k+'" aria-pressed="false">'+k+'</button>'}).join('');
   $$('#tblpick button').forEach(function(b){b.addEventListener('click',function(){showTbl(b.dataset.k)})});
-  showTbl('documents');
+  showTbl('verified_answers');
 
-  var SW=[['#09090b','Page background','zinc-950'],['#18181b','Card / panel','zinc-900'],['#27272a','Default border','zinc-800'],['#3f3f46','Input border','zinc-700'],['#f4f4f5','Primary text','zinc-100'],['#a1a1aa','Muted text','zinc-400'],['#71717a','Muted text, small','zinc-500'],['#ffffff','Primary button fill','white on zinc-950 text'],['#450a0a','Error fill (at 40%)','red-950/40'],['#7f1d1d','Error border','red-900'],['#fca5a5','Error text','red-300']];
+  var SW=[['#3987e5','Chart series','dashboard, one hue'],['#78350f','Review note border','amber-900'],['#065f46','Verified badge border','emerald-900'],['#09090b','Page background','zinc-950'],['#18181b','Card / panel','zinc-900'],['#27272a','Default border','zinc-800'],['#3f3f46','Input border','zinc-700'],['#f4f4f5','Primary text','zinc-100'],['#a1a1aa','Muted text','zinc-400'],['#71717a','Muted text, small','zinc-500'],['#ffffff','Primary button fill','white on zinc-950 text'],['#450a0a','Error fill (at 40%)','red-950/40'],['#7f1d1d','Error border','red-900'],['#fca5a5','Error text','red-300']];
   $('#swatches').innerHTML=SW.map(function(s){return '<div class="sw"><i style="background:'+s[0]+'"></i><div><b>'+s[1]+'</b><span>'+s[2]+' · '+s[0]+'</span></div></div>'}).join('');
 
   var NOTE={

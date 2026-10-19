@@ -1,12 +1,12 @@
 # UI/UX Design Brief
 
 **Project:** Sentinel
-**Status:** Formalizes an existing direction — this documents what's already in the code, it does not propose a redesign
+**Status:** Describes the shipped interface (chat, documents, admin dashboard) as of 2026-10-19. New screens must follow it; a new color or container style is added here first.
 **Related:** [`03_APP_FLOW.md`](03_APP_FLOW.md)
 
 ## 1. Design philosophy
 
-Dark-first, minimal, content-forward, no decoration. Every rule below is extracted directly from `frontend/src/app/page.tsx` as it exists today, not invented — the point of this doc is to keep every future screen consistent with what's already shipped, not to define a new look.
+Dark-only, minimal, content-forward, no decoration. Every rule below is taken from the code, so new screens stay consistent with what already exists.
 
 ## 2. Color palette
 
@@ -20,47 +20,58 @@ Base: Tailwind's `zinc` scale.
 | Input border | `zinc-700` |
 | Primary text | `zinc-100` |
 | Secondary / muted text | `zinc-400`, `zinc-500` |
-| Primary action (button) | white background, `zinc-950` text — the one deliberately high-contrast element on the page |
-| Error state | `red-950/40` background, `red-900` border, `red-300` text — follows the same "dark fill, lighter readable text" pattern as everything else, doesn't introduce a jarring bright red |
+| Primary action (button) | white background, `zinc-950` text: the one deliberately high-contrast element |
+| Error | `red-950/40` background, `red-900` border, `red-300` text |
+| Review needed (answer checker, stale verified answer) | `amber-950/40` background, `amber-900` border, `amber-200` text |
+| Verified answer badge | `emerald-950/40` background, `emerald-900` border, `emerald-200` text, `emerald-400` dot |
+| Chart series (dashboard) | `#3987e5`, one hue only, validated against the `zinc-900` card (lightness, chroma and 3:1 contrast all pass) |
+| Status dots (dashboard) | good `#0ca30c`, warning `#fab219`, critical `#d03b3b`, neutral `zinc-500`. Always paired with a text label, never color alone |
 
-There is no light mode and none is planned. This is a deliberate dark-only tool, not a gap — if that ever changes, it's a conscious call to revisit this document first, not a default assumption to slip in through one new screen.
+There is no light mode and none is planned. Changing that is a conscious decision made in this document first.
 
 ## 3. Typography
 
-System default sans stack (Tailwind default) — no custom webfont is loaded, and none should be added without a specific reason, since a webfont adds load latency for a tool that currently has zero visual need for one.
+System sans stack, no webfont: a webfont adds load time for a tool with no visual need for one.
 
-Scale in current use:
-- `text-4xl font-bold` — page title
-- `text-xl font-semibold` — section headers ("Answer", "Sources")
-- `text-sm` — body text, source previews
-- `text-xs` — metadata (language, distance score)
+- `text-4xl font-bold`: page title
+- `text-xl font-semibold`: section headers
+- `text-base font-semibold`: dashboard card titles
+- `text-3xl font-semibold`: dashboard tile values (proportional figures)
+- `text-sm`: body text, answers, source previews
+- `text-xs`: metadata, axis labels, hints
+- `tabular-nums`: table columns and axis ticks only
 
 ## 4. Layout
 
-- Single column, `max-w-5xl`, centered, `px-6 py-10` outer padding.
-- Cards: `rounded-2xl`, bordered, **no drop shadow** — flat design throughout, consistent with the palette above.
-- No sidebar, no top nav today — this is a single-tool page, not yet a multi-screen app.
+- Chat and Documents: single column, `max-w-5xl`, centered, `px-6 py-10`. Chat adds a 250 px session sidebar from `md` up.
+- Dashboard: `max-w-6xl`, because it holds tables and two-column card rows. Tiles are 2 columns on small screens and 4 on large; card rows are 1 column, then 2 from `lg`.
+- Cards: `rounded-2xl`, bordered, **no drop shadow**.
+- At 390 px every page is exactly the screen width: long paths break inside their chip, and tables scroll inside their own container.
 
-## 5. Component inventory (current)
+## 5. Component inventory
 
-- Textarea — question input
-- Primary button — "Ask Sentinel," with a disabled state below 3 characters
-- Loading indicator — inline text swap on the button plus a persistent helper caption, not a spinner
-- Error panel — new this session, renders inline above the answer area
-- Answer panel — pre-formatted (`<pre>`) text block, preserves the model's citation formatting
-- Source card list — id, title, language, distance score, path, content preview, one card per retrieved chunk
+- **Chat:** textarea; primary button (disabled under 3 characters); Stop button while streaming; sources-per-answer slider; message bubbles; citation chips (`[S1]` in a bordered mono chip); collapsible source cards; Helpful / Not helpful buttons; review note (amber); verified badge (emerald); inline failed bubble (red).
+- **Documents:** drop zone, upload rows with status, Uploaded / Codebase switch, paginated list.
+- **Dashboard:**
+  - status pills (dot + label) and stat tiles;
+  - two hand-drawn SVG charts (columns for questions per day, bars for hit@5 per eval run), each with hover/focus tooltips and a "Show as table" view;
+  - data tables;
+  - the verified-answer review queue (status tabs, editable answer, approve/reject/delete/re-draft, five items at a time with "Show more");
+  - admin sign-in form.
 
 ## 6. States
 
-- **Empty:** only the input is visible — answer/source panels are conditionally rendered, not hidden with CSS, confirmed in code.
-- **Loading:** button text changes, helper caption appears, button disabled, textarea stays editable (a deliberate exception to rule 8.7 in `docs/CONTEXT.md`, so a user can draft the next question during a 60-second wait; the submit button is what blocks double-sends). Known defect: the helper caption is currently a `<p>` nested inside the `<button>`, which is invalid HTML and should move out of the button. This state is intentionally persistent (not a toast) because generation currently takes 50-60 seconds on the local model — see [`02_TRD.md`](02_TRD.md) — and a state that disappears before the request resolves would read as broken.
-- **Error:** red panel renders above the answer area, error text from the caught fetch failure.
-- **Success:** answer panel and source cards render, no auto-scroll — worth reconsidering once answers routinely run long enough to push the input off-screen.
+- **Empty:** components that have no data are not rendered, or show a sentence saying what will appear and how to add it.
+- **Loading:** persistent, not a toast. Streaming shows "Searching Superset and drafting a grounded answer…" until the first token; the dashboard dims to 70% while it refreshes instead of blanking.
+- **Error:** rendered where it happened (inline bubble, card notice), with the reason.
+- **Review needed:** amber note under the answer, naming what is missing.
+- **Verified:** emerald badge with the approval date and the question it matched.
+
+The chat textarea stays editable while an answer streams, so the next question can be drafted. Double-sends are prevented by the button, which turns into Stop. This is a deliberate exception to rule 8.7 in `CONTEXT.md`.
 
 ## 7. Guidance for new screens
 
-Whatever gets built next per the Implementation Plan (Phase 6 conversation memory, Phase 8 chat thread / upload / feedback UI) must:
-
-- Stay within the zinc / white / red palette above — no new color introduced without updating this document first.
-- Reuse the `rounded-2xl`, `zinc-900` background, `zinc-800` border card pattern rather than inventing a new container style per screen.
-- Treat loading and error states as first-class, persistently rendered states, not toasts — this page's slow local-model latency is exactly why that matters here, and it won't stop mattering just because a new screen gets added.
+- Stay within the palette above; add any new color to this document first.
+- Reuse the `rounded-2xl`, `zinc-900`, `zinc-800` card pattern.
+- Loading and error states are first-class, persistently rendered states, not toasts.
+- Charts: one hue per series, a legend once there are two or more series, solid hairline gridlines, and a table view.
