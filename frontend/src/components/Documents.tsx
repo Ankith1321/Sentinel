@@ -7,6 +7,7 @@ import {
   listDocuments,
   uploadDocument,
   type DocumentList,
+  type DocumentSource,
   type JobStatus,
 } from "@/lib/api";
 
@@ -40,6 +41,7 @@ export function Documents() {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [documents, setDocuments] = useState<DocumentList>({ total: 0, items: [] });
   const [offset, setOffset] = useState(0);
+  const [source, setSource] = useState<DocumentSource>("upload");
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
@@ -50,7 +52,7 @@ export function Documents() {
   useEffect(() => {
     let cancelled = false;
 
-    listDocuments(PAGE_SIZE, offset)
+    listDocuments(PAGE_SIZE, offset, source)
       .then((list) => {
         if (cancelled) return;
         setDocuments(list);
@@ -63,7 +65,7 @@ export function Documents() {
     return () => {
       cancelled = true;
     };
-  }, [offset, reloadToken]);
+  }, [offset, reloadToken, source]);
 
   async function ingest(file: File) {
     const key = crypto.randomUUID();
@@ -174,13 +176,36 @@ export function Documents() {
       )}
 
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold">Indexed documents</h2>
-          <span className="text-xs text-zinc-500">{documents.total} total</span>
+          <div className="flex items-center gap-3">
+            <div role="group" aria-label="Which documents" className="flex gap-1 rounded-xl bg-zinc-950 p-1 text-xs">
+              {([
+                ["upload", "Uploaded"],
+                ["corpus", "Codebase"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={source === value}
+                  onClick={() => {
+                    setSource(value);
+                    setOffset(0);
+                  }}
+                  className="cursor-pointer rounded-lg px-3 py-1 text-zinc-400 aria-pressed:bg-zinc-800 aria-pressed:text-zinc-100"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-zinc-500">{documents.total.toLocaleString()} total</span>
+          </div>
         </div>
         {documents.items.length === 0 ? (
           <p className="mt-4 text-sm text-zinc-400">
-            Nothing tracked yet. Files you upload appear here with their chunk counts.
+            {source === "upload"
+              ? "No uploads yet. Files you upload appear here with their chunk counts."
+              : "The codebase manifest is empty. Run a full build or a sync to fill it."}
           </p>
         ) : (
           <ul className="mt-4 divide-y divide-zinc-800">
@@ -192,13 +217,15 @@ export function Documents() {
                     {doc.language ?? doc.source_type} · {doc.chunk_count} chunks
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => remove(doc.id)}
-                  className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-red-800 hover:text-red-300"
-                >
-                  Remove
-                </button>
+                {doc.source_type === "upload" && (
+                  <button
+                    type="button"
+                    onClick={() => remove(doc.id)}
+                    className="cursor-pointer rounded-lg border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-red-800 hover:text-red-300"
+                  >
+                    Remove
+                  </button>
+                )}
               </li>
             ))}
           </ul>

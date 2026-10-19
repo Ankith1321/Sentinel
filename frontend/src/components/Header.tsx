@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 
-export function Header({ active }: { active: "chat" | "documents" }) {
+export async function Header({ active }: { active: "chat" | "documents" | "dashboard" }) {
+  const admin = (await cookies()).has("sentinel_admin");
   const link = (href: string, label: string, isActive: boolean) => (
     <Link
       href={href}
@@ -20,6 +22,7 @@ export function Header({ active }: { active: "chat" | "documents" }) {
       <nav aria-label="Primary" className="flex gap-1">
         {link("/", "Chat", active === "chat")}
         {link("/documents", "Documents", active === "documents")}
+        {admin && link("/dashboard", "Dashboard", active === "dashboard")}
       </nav>
     </header>
   );

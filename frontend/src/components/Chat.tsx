@@ -153,6 +153,7 @@ export function Chat() {
             content: event.data.answer,
             sources: event.data.sources,
             checks: event.data.checks,
+            verified: event.data.verified,
             messageId: event.data.message_id,
             model: event.data.model,
             latencyMs: event.data.retrieval_ms + event.data.generation_ms,

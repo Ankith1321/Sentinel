@@ -78,6 +78,15 @@ export function MessageBubble({ message, onRate }: Props) {
       )}
       {message.streaming && !waiting && <span className="mt-1 inline-block h-4 w-1.5 animate-pulse bg-zinc-500" />}
 
+      {message.verified && !message.streaming && (
+        <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-xl border border-emerald-900 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-200">
+          <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-400" />
+          Verified answer, reviewed by an admin
+          {message.verified.reviewed_at ? ` on ${new Date(message.verified.reviewed_at).toLocaleDateString()}` : ""}
+          <span className="text-emerald-300/70">· matched &quot;{message.verified.matched_question}&quot;</span>
+        </p>
+      )}
+
       {message.checks?.needs_review && !message.streaming && (
         <p role="note" className="mt-4 rounded-xl border border-amber-900 bg-amber-950/40 p-3 text-xs text-amber-200">
           Check this answer against the sources.{" "}
