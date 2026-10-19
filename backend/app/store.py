@@ -23,13 +23,88 @@ def get_document(document_id: str) -> sqlite3.Row | None:
         return db.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
 
 
-def list_documents(limit: int, offset: int) -> tuple[list[sqlite3.Row], int]:
+UPLOAD_SOURCE = "upload"
+
+
+def list_documents(limit: int, offset: int, source: str | None = None) -> tuple[list[sqlite3.Row], int]:
+    where, params = "", ()
+    if source == UPLOAD_SOURCE:
+        where, params = "WHERE source_type = ?", (UPLOAD_SOURCE,)
+    elif source == "corpus":
+        where, params = "WHERE source_type != ?", (UPLOAD_SOURCE,)
     with connect() as db:
         rows = db.execute(
-            "SELECT * FROM documents ORDER BY path LIMIT ? OFFSET ?", (limit, offset)
+            f"SELECT * FROM documents {where} ORDER BY path LIMIT ? OFFSET ?", (*params, limit, offset)
         ).fetchall()
-        total = db.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+        total = db.execute(f"SELECT COUNT(*) FROM documents {where}", params).fetchone()[0]
     return rows, total
+
+
+def corpus_documents() -> dict[str, sqlite3.Row]:
+    with connect() as db:
+        rows = db.execute("SELECT * FROM documents WHERE source_type != ?", (UPLOAD_SOURCE,)).fetchall()
+    return {row["path"]: row for row in rows}
+
+
+def replace_corpus_manifest(rows: list[tuple[str, str, str, str | None, str, int]]) -> None:
+    now = utc_now()
+    with connect() as db:
+        db.execute("DELETE FROM documents WHERE source_type != ?", (UPLOAD_SOURCE,))
+        db.executemany(
+            "INSERT INTO documents (id, path, source_type, language, content_hash, chunk_count, "
+            "first_indexed_at, last_indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(*row, now, now) for row in rows],
+        )
+
+
+def document_counts() -> dict[str, int]:
+    with connect() as db:
+        rows = db.execute(
+            "SELECT source_type, COUNT(*), COALESCE(SUM(chunk_count), 0) FROM documents GROUP BY source_type"
+        ).fetchall()
+    return {f"{r[0]}_files": r[1] for r in rows} | {f"{r[0]}_chunks": r[2] for r in rows}
+
+
+def start_sync_run(pulled: bool) -> int:
+    with connect() as db:
+        cursor = db.execute(
+            "INSERT INTO sync_runs (status, pulled, started_at) VALUES ('running', ?, ?)", (int(pulled), utc_now())
+        )
+        return cursor.lastrowid
+
+
+def finish_sync_run(run_id: int, report: dict | None, error: str | None) -> None:
+    report = report or {}
+    with connect() as db:
+        db.execute(
+            """
+            UPDATE sync_runs SET status = ?, commit_before = ?, commit_after = ?, scanned = ?, added = ?,
+                changed = ?, removed = ?, unchanged = ?, chunks_written = ?, chunks_deleted = ?,
+                errors_json = ?, error = ?, finished_at = ?
+            WHERE id = ?
+            """,
+            (
+                "failed" if error else "done",
+                report.get("commit_before"),
+                report.get("commit_after"),
+                report.get("scanned"),
+                report.get("added"),
+                report.get("changed"),
+                report.get("removed"),
+                report.get("unchanged"),
+                report.get("chunks_written"),
+                report.get("chunks_deleted"),
+                json.dumps(report.get("errors", [])),
+                error,
+                utc_now(),
+                run_id,
+            ),
+        )
+
+
+def recent_sync_runs(limit: int) -> list[sqlite3.Row]:
+    with connect() as db:
+        return db.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
 
 
 def upsert_document(
@@ -160,17 +235,18 @@ def add_query_log(
     retrieval_ms: int,
     generation_ms: int,
     model: str,
+    needs_review: bool | None = None,
 ) -> None:
     with connect() as db:
         db.execute(
             """
             INSERT INTO query_log
                 (session_id, question, standalone_question, retrieved_ids,
-                 retrieval_ms, generation_ms, model, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 retrieval_ms, generation_ms, model, needs_review, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (session_id, question, standalone_question, json.dumps(retrieved_ids),
-             retrieval_ms, generation_ms, model, utc_now()),
+             retrieval_ms, generation_ms, model, None if needs_review is None else int(needs_review), utc_now()),
         )
 
 

@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 from collections.abc import Iterator
@@ -6,6 +7,8 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
+from backend.app import store
+from backend.app.db import init_db
 from ingestion.config import CHROMA_PATH, CHUNKS_PATH, COLLECTION_NAME, EMBEDDING_MODEL
 
 BATCH_SIZE = 64
@@ -24,8 +27,12 @@ def delete_stale_chunks(collection, keep_ids: set[str]) -> int:
     stale: list[str] = []
 
     for offset in range(0, collection.count(), ID_PAGE_SIZE):
-        page = collection.get(limit=ID_PAGE_SIZE, offset=offset, include=[])
-        stale.extend(i for i in page["ids"] if i not in keep_ids)
+        page = collection.get(limit=ID_PAGE_SIZE, offset=offset, include=["metadatas"])
+        stale.extend(
+            chunk_id
+            for chunk_id, meta in zip(page["ids"], page["metadatas"], strict=True)
+            if chunk_id not in keep_ids and meta.get("source_type") != store.UPLOAD_SOURCE
+        )
 
     for start in range(0, len(stale), ID_PAGE_SIZE):
         collection.delete(ids=stale[start:start + ID_PAGE_SIZE])
@@ -79,8 +86,32 @@ def main() -> None:
 
     removed = delete_stale_chunks(collection, {c["chunk_id"] for c in chunks})
     logger.info("removed %d stale chunks; collection count=%d", removed, collection.count())
+    record_manifest(chunks)
+
+
+def corpus_manifest(chunks: list[dict]) -> list[tuple]:
+    rows: dict[str, list] = {}
+    for c in chunks:
+        row = rows.setdefault(
+            c["path"], [c["source_id"], c["path"], c["source_type"], c["language"], c.get("content_hash", ""), 0]
+        )
+        row[5] += 1
+    return [tuple(row) for row in rows.values()]
+
+
+def record_manifest(chunks: list[dict]) -> None:
+    init_db()
+    rows = corpus_manifest(chunks)
+    store.replace_corpus_manifest(rows)
+    logger.info("manifest recorded for %d files", len(rows))
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Embed data/processed chunks into ChromaDB and record the manifest")
+    parser.add_argument("--manifest-only", action="store_true", help="only rebuild the file manifest from the chunks")
+    arguments = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    main()
+    if arguments.manifest_only:
+        record_manifest(list(load_chunks()))
+    else:
+        main()

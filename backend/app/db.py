@@ -60,7 +60,27 @@ CREATE TABLE IF NOT EXISTS query_log (
     retrieval_ms        INTEGER NOT NULL,
     generation_ms       INTEGER NOT NULL,
     model               TEXT NOT NULL,
+    needs_review        INTEGER,
     created_at          TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sync_runs (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    status         TEXT NOT NULL CHECK (status IN ('running', 'done', 'failed')),
+    pulled         INTEGER NOT NULL DEFAULT 0,
+    commit_before  TEXT,
+    commit_after   TEXT,
+    scanned        INTEGER,
+    added          INTEGER,
+    changed        INTEGER,
+    removed        INTEGER,
+    unchanged      INTEGER,
+    chunks_written INTEGER,
+    chunks_deleted INTEGER,
+    errors_json    TEXT,
+    error          TEXT,
+    started_at     TEXT NOT NULL,
+    finished_at    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -97,3 +117,6 @@ def connect() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with connect() as connection:
         connection.executescript(SCHEMA)
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(query_log)")}
+        if "needs_review" not in columns:
+            connection.execute("ALTER TABLE query_log ADD COLUMN needs_review INTEGER")

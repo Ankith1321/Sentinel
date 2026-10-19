@@ -213,3 +213,38 @@ def test_documents_list_and_delete(client, monkeypatch):
     monkeypatch.setattr(main, "delete_indexed_document", lambda document_id: document_id == "doc-1")
     assert client.delete("/documents/doc-1", headers=ADMIN).json() == {"id": "doc-1", "deleted": True}
     assert client.delete("/documents/nope", headers=ADMIN).status_code == 404
+
+
+def test_sync_is_admin_only_and_records_a_run(client, monkeypatch):
+    def fake_job(run_id, pull):
+        store.finish_sync_run(run_id, {"scanned": 3, "added": 1, "changed": 0, "removed": 0, "unchanged": 2,
+                                       "errors": []}, None)
+
+    monkeypatch.setattr(main, "run_sync_job", fake_job)
+    created = client.post("/admin/keys", json={"label": "user"}, headers=ADMIN).json()
+
+    assert client.post("/admin/sync", headers={"X-API-Key": created["key"]}).status_code == 401
+    started = client.post("/admin/sync", headers=ADMIN)
+    runs = client.get("/admin/sync", headers=ADMIN).json()
+
+    assert started.status_code == 202
+    assert runs[0]["id"] == started.json()["run_id"]
+    assert runs[0]["status"] == "done" and runs[0]["added"] == 1 and runs[0]["errors"] == []
+
+
+def test_sync_refuses_to_start_twice(client, monkeypatch):
+    monkeypatch.setattr(main, "sync_running", lambda: True)
+
+    assert client.post("/admin/sync", headers=ADMIN).status_code == 409
+
+
+def test_documents_can_be_filtered_by_source(client):
+    store.upsert_document("corpus-1", "superset/app.py", "code", "python", "h1", 4)
+    store.upsert_document("upload-9", "uploads/runbook.md", "upload", "markdown", "h2", 1)
+
+    uploads = client.get("/documents?source=upload", headers=ADMIN).json()["items"]
+    corpus = client.get("/documents?source=corpus", headers=ADMIN).json()["items"]
+
+    assert all(item["source_type"] == "upload" for item in uploads)
+    assert any(item["path"] == "superset/app.py" for item in corpus)
+    assert all(item["source_type"] != "upload" for item in corpus)

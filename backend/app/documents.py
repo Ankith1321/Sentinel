@@ -11,7 +11,7 @@ from ingestion.chunker import ChunkRecord, chunk_record
 from ingestion.config import UPLOAD_PATH_PREFIX
 from ingestion.loader import stable_source_id
 from ingestion.records import SourceRecord
-from ingestion.retriever import get_collection, get_keyword_index, get_model
+from ingestion.retriever import get_collection, get_model, refresh_keyword_index
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,18 @@ def embed_and_upsert(chunks: list[ChunkRecord]) -> None:
         )
 
 
+def replace_source_chunks(source_id: str, chunks: list[ChunkRecord]) -> tuple[int, int]:
+    # Upsert first, then delete what the new version no longer produces, so a search never
+    # sees the file missing and a shrunken file leaves no stale chunks behind.
+    if chunks:
+        embed_and_upsert(chunks)
+    keep = {c.chunk_id for c in chunks}
+    stale = [i for i in get_collection().get(where={"source_id": source_id}, include=[])["ids"] if i not in keep]
+    if stale:
+        get_collection().delete(ids=stale)
+    return len(chunks), len(stale)
+
+
 def ingest_upload(job_id: str, filename: str, data: bytes) -> None:
     store.update_job(job_id, "processing")
 
@@ -114,13 +126,9 @@ def ingest_upload(job_id: str, filename: str, data: bytes) -> None:
         )
         chunks = chunk_record(record)
 
-        get_collection().delete(where={"source_id": record.source_id})
-        if chunks:
-            embed_and_upsert(chunks)
-
+        replace_source_chunks(record.source_id, chunks)
         store.upsert_document(record.source_id, path, record.source_type, record.language, content_hash, len(chunks))
-        get_keyword_index.cache_clear()
-        get_keyword_index()
+        refresh_keyword_index()
 
         store.update_job(job_id, "done", document_id=record.source_id)
         logger.info("ingested %s as %d chunks", path, len(chunks))
@@ -135,5 +143,4 @@ def delete_indexed_document(document_id: str) -> bool:
 
     get_collection().delete(where={"source_id": document_id})
     store.delete_document(document_id)
-    get_keyword_index.cache_clear()
     return True

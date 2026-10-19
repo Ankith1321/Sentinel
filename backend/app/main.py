@@ -14,15 +14,17 @@ from backend.app import store
 from backend.app.auth import require_admin_key, require_api_key
 from backend.app.db import init_db
 from backend.app.documents import SUPPORTED_UPLOAD_SUFFIXES, delete_indexed_document, ingest_upload, safe_filename
+from backend.app.sync import run_sync_job, sync_running
 from ingestion.config import CORS_ORIGINS, MAX_UPLOAD_BYTES, RETRIEVAL_MODE
 from ingestion.llm import get_provider
 from ingestion.rag_service import ask_sentinel, stream_sentinel
-from ingestion.retriever import get_keyword_index, get_model, get_reranker, retrieve
+from ingestion.retriever import get_keyword_index, get_model, get_reranker, refresh_keyword_index, retrieve
 
 logger = logging.getLogger(__name__)
 
 Language = Literal["python", "markdown", "javascript", "typescript", "text"]
 RetrievalMode = Literal["vector", "keyword", "hybrid", "hybrid_rerank"]
+DocumentSource = Literal["upload", "corpus"]
 
 
 class QueryRequest(BaseModel):
@@ -152,6 +154,37 @@ class DocumentList(BaseModel):
     items: list[DocumentItem]
 
 
+class SyncStarted(BaseModel):
+    run_id: int
+    status: str
+
+
+class SyncRun(BaseModel):
+    id: int
+    status: str
+    pulled: bool
+    commit_before: str | None = None
+    commit_after: str | None = None
+    scanned: int | None = None
+    added: int | None = None
+    changed: int | None = None
+    removed: int | None = None
+    unchanged: int | None = None
+    chunks_written: int | None = None
+    chunks_deleted: int | None = None
+    errors: list[str] = []
+    error: str | None = None
+    started_at: str
+    finished_at: str | None = None
+
+
+def to_sync_run(row) -> SyncRun:
+    data = dict(row)
+    data["errors"] = json.loads(data.pop("errors_json") or "[]")
+    data["pulled"] = bool(data["pulled"])
+    return SyncRun(**data)
+
+
 class DeleteResponse(BaseModel):
     id: str
     deleted: bool
@@ -245,6 +278,7 @@ def record_query(session_id: str | None, question: str, payload: dict) -> None:
         retrieval_ms=payload.get("retrieval_ms", 0),
         generation_ms=payload.get("generation_ms", 0),
         model=payload.get("model", "unknown"),
+        needs_review=(payload.get("checks") or {}).get("needs_review"),
     )
 
 
@@ -431,17 +465,34 @@ def get_job(job_id: str) -> JobStatus:
 def list_documents(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    source: DocumentSource | None = None,
 ) -> DocumentList:
-    rows, total = store.list_documents(limit, offset)
+    rows, total = store.list_documents(limit, offset, source)
     return DocumentList(total=total, items=[DocumentItem(**dict(row)) for row in rows])
 
 
 @app.delete("/documents/{document_id}", response_model=DeleteResponse, dependencies=protected)
-def delete_document(document_id: str) -> DeleteResponse:
+def delete_document(document_id: str, background_tasks: BackgroundTasks) -> DeleteResponse:
     if not delete_indexed_document(document_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
 
+    background_tasks.add_task(refresh_keyword_index)
     return DeleteResponse(id=document_id, deleted=True)
+
+
+@app.post("/admin/sync", response_model=SyncStarted, status_code=status.HTTP_202_ACCEPTED, dependencies=admin_only)
+def start_sync(background_tasks: BackgroundTasks, pull: bool = False) -> SyncStarted:
+    if sync_running():
+        raise HTTPException(status.HTTP_409_CONFLICT, "A sync is already running")
+
+    run_id = store.start_sync_run(pull)
+    background_tasks.add_task(run_sync_job, run_id, pull)
+    return SyncStarted(run_id=run_id, status="running")
+
+
+@app.get("/admin/sync", response_model=list[SyncRun], dependencies=admin_only)
+def list_sync_runs(limit: int = Query(default=10, ge=1, le=50)) -> list[SyncRun]:
+    return [to_sync_run(row) for row in store.recent_sync_runs(limit)]
 
 
 @app.post("/admin/keys", response_model=KeyCreated, status_code=status.HTTP_201_CREATED, dependencies=admin_only)
