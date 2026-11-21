@@ -115,7 +115,7 @@ def build_sources(contexts: list[dict]) -> list[dict]:
             "language": c["metadata"].get("language"),
             "title": c["metadata"].get("title"),
             "distance": c.get("distance"),
-            "score": c.get("rerank_score", c.get("fusion_score", c.get("keyword_score"))),
+            "score": c.get("fusion_score", c.get("keyword_score")),
             "preview": c["content"][:SNIPPET_CHARS],
         }
         for i, c in enumerate(contexts, start=1)

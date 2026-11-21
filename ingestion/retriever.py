@@ -9,14 +9,12 @@ from typing import Literal
 import chromadb
 from chromadb.errors import NotFoundError
 from rank_bm25 import BM25Okapi
-from sentence_transformers import CrossEncoder, SentenceTransformer
+from sentence_transformers import SentenceTransformer
 
 from ingestion.config import (
     CHROMA_PATH,
     COLLECTION_NAME,
     EMBEDDING_MODEL,
-    QUERY_PREFIX,
-    RERANK_MODEL,
     RETRIEVAL_MODE,
     SYMBOL_WEIGHT,
     TEST_PATH_PENALTY,
@@ -24,7 +22,7 @@ from ingestion.config import (
 
 logger = logging.getLogger(__name__)
 
-Mode = Literal["vector", "keyword", "hybrid", "hybrid_rerank"]
+Mode = Literal["vector", "keyword", "hybrid"]
 
 RRF_K = 60
 MIN_CANDIDATE_POOL = 20
@@ -56,11 +54,6 @@ class KeywordIndex:
 @lru_cache(maxsize=1)
 def get_model() -> SentenceTransformer:
     return SentenceTransformer(EMBEDDING_MODEL)
-
-
-@lru_cache(maxsize=1)
-def get_reranker() -> CrossEncoder:
-    return CrossEncoder(RERANK_MODEL)
 
 
 class IndexUnavailable(RuntimeError):
@@ -149,7 +142,7 @@ def passes_filters(metadata: dict, language: str | None, path_prefix: str | None
 
 
 def vector_search(query: str, limit: int, language: str | None, path_prefix: str | None) -> list[dict]:
-    embedding = get_model().encode([QUERY_PREFIX + query], normalize_embeddings=True)[0].tolist()
+    embedding = get_model().encode([query], normalize_embeddings=True)[0].tolist()
     fetch = limit * PATH_FILTER_OVERFETCH if path_prefix else limit
 
     results = get_collection().query(
@@ -249,15 +242,6 @@ def demote_test_files(query: str, hits: list[dict]) -> list[dict]:
     return sorted(adjusted, key=lambda h: h["fusion_score"], reverse=True)
 
 
-def rerank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
-    if not candidates:
-        return []
-
-    scores = get_reranker().predict([(query, c["content"]) for c in candidates])
-    scored = [{**c, "rerank_score": float(s)} for c, s in zip(candidates, scores, strict=True)]
-    return sorted(scored, key=lambda c: c["rerank_score"], reverse=True)[:top_k]
-
-
 def retrieve(
     query: str,
     top_k: int = 5,
@@ -286,7 +270,7 @@ def retrieve(
                 [1.0, 1.0, SYMBOL_WEIGHT],
             ),
         )
-        results = rerank(query, fused[:pool], top_k) if mode == "hybrid_rerank" else fused[:top_k]
+        results = fused[:top_k]
 
     logger.info(
         "retrieve mode=%s top_k=%d filters=%s/%s ms=%.0f query=%r ids=%s",

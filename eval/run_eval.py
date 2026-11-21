@@ -121,7 +121,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Score Sentinel retrieval against eval/qa_set.json")
     parser.add_argument("--validate", action="store_true", help="only check expected files exist")
     parser.add_argument("--label", default="baseline", help="name stored in the result file")
-    parser.add_argument("--mode", default=None, choices=["vector", "keyword", "hybrid", "hybrid_rerank"])
+    parser.add_argument("--mode", default=None, choices=["vector", "keyword", "hybrid"])
     parser.add_argument("--depth", type=int, default=max(CUTOFFS), help="chunks to retrieve per question")
     args = parser.parse_args()
 

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from eval.run_eval import RESULTS_DIR, load_qa_set
 from ingestion import rag_service
 from ingestion.answer_checks import check_answer
-from ingestion.config import LOCAL_LLM_MODEL, LOCAL_LLM_QUANT, MAX_ANSWER_TOKENS, PROJECT_ROOT
+from ingestion.config import LOCAL_LLM_MODEL, MAX_ANSWER_TOKENS, PROJECT_ROOT
 from ingestion.guardrails import sentence_support
 from ingestion.llm import get_provider
 
@@ -123,7 +123,7 @@ def main() -> int:
     summary = summarise(answerable_rows, unanswerable_rows)
 
     report = {
-        "config": {"model": LOCAL_LLM_MODEL, "quantization": LOCAL_LLM_QUANT or "fp16", "prompt": args.prompt},
+        "config": {"model": LOCAL_LLM_MODEL, "prompt": args.prompt},
         "summary": summary,
         "answerable": answerable_rows,
         "unanswerable": unanswerable_rows,

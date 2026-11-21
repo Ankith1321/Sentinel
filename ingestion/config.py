@@ -21,13 +21,11 @@ CHUNKS_PATH = PROCESSED_DIR / (
 
 EMBEDDING_MODEL = os.getenv("SENTINEL_EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 
-QUERY_PREFIX = os.getenv("SENTINEL_QUERY_PREFIX", "")
 # The definition list is fused as a third ranking with extra weight: when a question names a symbol,
 # the chunk that defines it should beat the many chunks that merely use it.
 SYMBOL_WEIGHT = float(os.getenv("SENTINEL_SYMBOL_WEIGHT", "3.0"))
 TEST_PATH_PENALTY = float(os.getenv("SENTINEL_TEST_PATH_PENALTY", "0.6"))
 LOG_LEVEL = os.getenv("SENTINEL_LOG_LEVEL", "INFO")
-RERANK_MODEL = os.getenv("SENTINEL_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 RETRIEVAL_MODE = os.getenv("SENTINEL_RETRIEVAL_MODE", "hybrid")
 
 # The embedder silently truncates input past its window, so chunks must fit inside it or their
@@ -49,7 +47,6 @@ ANTHROPIC_MODEL = os.getenv("SENTINEL_ANTHROPIC_MODEL", "claude-haiku-5-5")
 # project model (owner decision, 2026-10-19). Its licence (Qwen Research) allows non-commercial use
 # only; a commercial deployment must switch to an Apache-2.0 model or the Claude path.
 LOCAL_LLM_MODEL = os.getenv("SENTINEL_LOCAL_LLM_MODEL", "Qwen/Qwen2.5-3B-Instruct")
-LOCAL_LLM_QUANT = os.getenv("SENTINEL_LOCAL_LLM_QUANT", "")
 PROMPT_VARIANT = os.getenv("SENTINEL_PROMPT_VARIANT", "v2")
 MAX_ANSWER_TOKENS = int(os.getenv("SENTINEL_MAX_ANSWER_TOKENS", "500"))
 CONTEXT_TOKEN_BUDGET = int(os.getenv("SENTINEL_CONTEXT_TOKEN_BUDGET", "4000"))

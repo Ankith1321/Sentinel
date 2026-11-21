@@ -7,9 +7,9 @@ from typing import Protocol
 
 import anthropic
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextIteratorStreamer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
-from ingestion.config import ANTHROPIC_MODEL, LLM_PROVIDER, LOCAL_LLM_MODEL, LOCAL_LLM_QUANT
+from ingestion.config import ANTHROPIC_MODEL, LLM_PROVIDER, LOCAL_LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -60,28 +60,14 @@ class AnthropicProvider:
 class LocalProvider:
     name = "local"
 
-    def __init__(self, model: str, quantization: str = "") -> None:
+    def __init__(self, model: str) -> None:
         self.model = model
         # One generation at a time: concurrent requests would each need their own KV cache, and an
         # 8 GB card has no room for two.
         self.generation_lock = threading.Lock()
         self.tokenizer = AutoTokenizer.from_pretrained(model)
-        self.llm = AutoModelForCausalLM.from_pretrained(model, device_map="auto", **self.load_options(quantization))
-        logger.info("local LLM %s (%s) loaded on %s", model, quantization or "fp16", self.llm.device)
-
-    @staticmethod
-    def load_options(quantization: str) -> dict:
-        if quantization == "4bit":
-            return {
-                "quantization_config": BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.float16,
-                )
-            }
-        if quantization == "8bit":
-            return {"quantization_config": BitsAndBytesConfig(load_in_8bit=True)}
-        return {"dtype": torch.float16}
+        self.llm = AutoModelForCausalLM.from_pretrained(model, device_map="auto", dtype=torch.float16)
+        logger.info("local LLM %s (fp16) loaded on %s", model, self.llm.device)
 
     def build_inputs(self, system: str, messages: list[dict]):
         text = self.tokenizer.apply_chat_template(
@@ -130,4 +116,4 @@ def get_provider() -> LLMProvider:
     if name == "anthropic":
         return AnthropicProvider(ANTHROPIC_MODEL)
 
-    return LocalProvider(LOCAL_LLM_MODEL, LOCAL_LLM_QUANT)
+    return LocalProvider(LOCAL_LLM_MODEL)

@@ -17,7 +17,7 @@ from ingestion.config import CORS_ORIGINS, LOG_LEVEL, RETRIEVAL_MODE
 from ingestion.guardrails import BLOCKED_ANSWER, injection_reason
 from ingestion.llm import get_provider
 from ingestion.rag_service import ask_sentinel, stream_sentinel
-from ingestion.retriever import IndexUnavailable, get_keyword_index, get_model, get_reranker, index_ready, retrieve
+from ingestion.retriever import IndexUnavailable, get_keyword_index, get_model, index_ready, retrieve
 
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 for noisy in ("httpx", "httpcore", "huggingface_hub", "sentence_transformers", "urllib3", "filelock"):
@@ -25,7 +25,7 @@ for noisy in ("httpx", "httpcore", "huggingface_hub", "sentence_transformers", "
 logger = logging.getLogger(__name__)
 
 Language = Literal["python", "markdown", "javascript", "typescript", "text"]
-RetrievalMode = Literal["vector", "keyword", "hybrid", "hybrid_rerank"]
+RetrievalMode = Literal["vector", "keyword", "hybrid"]
 GUARDRAIL_MODEL_LABEL = "guardrail"
 INDEX_UNAVAILABLE_DETAIL = "The search index is not available on this server."
 
@@ -132,8 +132,6 @@ def warm_up() -> None:
         logger.warning("no search index found; search routes will answer 503 until one is built or mounted")
     elif RETRIEVAL_MODE != "vector":
         get_keyword_index()
-    if RETRIEVAL_MODE == "hybrid_rerank":
-        get_reranker()
     get_provider()
 
 
@@ -314,7 +312,7 @@ def search(request: QueryRequest) -> SearchResponse:
                 language=item["metadata"].get("language"),
                 title=item["metadata"].get("title"),
                 distance=item.get("distance"),
-                score=item.get("rerank_score", item.get("fusion_score", item.get("keyword_score"))),
+                score=item.get("fusion_score", item.get("keyword_score")),
                 preview=item["content"][:800],
             )
             for i, item in enumerate(results, start=1)

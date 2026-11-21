@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY ingestion ./ingestion
 COPY backend ./backend
 
-RUN python -c "from sentence_transformers import CrossEncoder, SentenceTransformer; from ingestion.config import EMBEDDING_MODEL, RERANK_MODEL; SentenceTransformer(EMBEDDING_MODEL); CrossEncoder(RERANK_MODEL)"
+RUN python -c "from sentence_transformers import SentenceTransformer; from ingestion.config import EMBEDDING_MODEL; SentenceTransformer(EMBEDDING_MODEL)"
 
 RUN useradd --create-home sentinel && mkdir -p /app/data && chown -R sentinel /app
 USER sentinel
