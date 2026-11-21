@@ -1,6 +1,6 @@
 import pytest
 
-from backend.app import documents, store, sync
+from backend.app import store, sync
 from backend.app.db import connect, init_db
 
 
@@ -38,11 +38,8 @@ def corpus(tmp_path, monkeypatch):
     with connect() as db:
         db.execute("DELETE FROM documents")
     fake = FakeCollection()
-    refreshes: list[int] = []
     monkeypatch.setattr(sync, "get_collection", lambda: fake)
-    monkeypatch.setattr(documents, "get_collection", lambda: fake)
-    monkeypatch.setattr(documents, "embed_and_upsert", fake.upsert_chunks)
-    monkeypatch.setattr(sync, "refresh_keyword_index", lambda: refreshes.append(1))
+    monkeypatch.setattr(sync, "embed_and_upsert", fake.upsert_chunks)
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "reports.py").write_text(function_source(12), encoding="utf-8")
     (tmp_path / "guide.md").write_text(
@@ -50,11 +47,11 @@ def corpus(tmp_path, monkeypatch):
         "so that analysts can compare revenue across regions without recomputing anything.\n",
         encoding="utf-8",
     )
-    return tmp_path, fake, refreshes
+    return tmp_path, fake
 
 
 def test_first_sync_indexes_everything_and_a_second_sync_changes_nothing(corpus):
-    root, fake, refreshes = corpus
+    root, fake = corpus
 
     first = sync.sync_corpus(root)
     second = sync.sync_corpus(root)
@@ -62,11 +59,10 @@ def test_first_sync_indexes_everything_and_a_second_sync_changes_nothing(corpus)
     assert (first.added, first.changed, first.removed) == (2, 0, 0)
     assert fake.paths() == {"pkg/reports.py", "guide.md"}
     assert (second.added, second.changed, second.removed, second.unchanged) == (0, 0, 0, 2)
-    assert len(refreshes) == 1
 
 
 def test_a_changed_file_is_reindexed_and_its_old_chunks_are_removed(corpus):
-    root, fake, _ = corpus
+    root, fake = corpus
     sync.sync_corpus(root)
     before = sum(1 for m in fake.rows.values() if m["path"] == "pkg/reports.py")
 
@@ -80,7 +76,7 @@ def test_a_changed_file_is_reindexed_and_its_old_chunks_are_removed(corpus):
 
 
 def test_a_deleted_file_disappears_from_the_index_and_the_manifest(corpus):
-    root, fake, _ = corpus
+    root, fake = corpus
     sync.sync_corpus(root)
 
     (root / "guide.md").unlink()
@@ -91,19 +87,8 @@ def test_a_deleted_file_disappears_from_the_index_and_the_manifest(corpus):
     assert "guide.md" not in store.corpus_documents()
 
 
-def test_uploaded_documents_are_never_touched(corpus):
-    root, fake, _ = corpus
-    store.upsert_document("upload-1", "uploads/notes.md", "upload", "markdown", "hash", 1)
-    fake.rows["upload-1::chunk_0"] = {"source_id": "upload-1", "path": "uploads/notes.md"}
-
-    sync.sync_corpus(root)
-
-    assert "upload-1::chunk_0" in fake.rows
-    assert store.get_document("upload-1") is not None
-
-
 def test_a_file_that_fails_is_reported_and_not_deleted(corpus, monkeypatch):
-    root, fake, _ = corpus
+    root, fake = corpus
     sync.sync_corpus(root)
     changed = "# Changed\n\n" + "A changed paragraph about nightly reports. " * 10
     (root / "guide.md").write_text(changed, encoding="utf-8")
@@ -121,12 +106,3 @@ def test_a_file_that_fails_is_reported_and_not_deleted(corpus, monkeypatch):
     assert "guide.md" in store.corpus_documents()
     assert "guide.md" in fake.paths()
 
-
-def test_a_second_sync_is_refused_while_one_is_running(corpus):
-    root, _, _ = corpus
-    sync._sync_lock.acquire()
-    try:
-        with pytest.raises(sync.SyncInProgress):
-            sync.sync_corpus(root)
-    finally:
-        sync._sync_lock.release()

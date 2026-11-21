@@ -27,12 +27,8 @@ def delete_stale_chunks(collection, keep_ids: set[str]) -> int:
     stale: list[str] = []
 
     for offset in range(0, collection.count(), ID_PAGE_SIZE):
-        page = collection.get(limit=ID_PAGE_SIZE, offset=offset, include=["metadatas"])
-        stale.extend(
-            chunk_id
-            for chunk_id, meta in zip(page["ids"], page["metadatas"], strict=True)
-            if chunk_id not in keep_ids and meta.get("source_type") != store.UPLOAD_SOURCE
-        )
+        page = collection.get(limit=ID_PAGE_SIZE, offset=offset, include=[])
+        stale.extend(chunk_id for chunk_id in page["ids"] if chunk_id not in keep_ids)
 
     for start in range(0, len(stale), ID_PAGE_SIZE):
         collection.delete(ids=stale[start:start + ID_PAGE_SIZE])

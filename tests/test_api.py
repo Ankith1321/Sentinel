@@ -3,7 +3,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app import main, store, verified
+from backend.app import main
 from ingestion.retriever import IndexUnavailable
 
 ADMIN = {"X-API-Key": "test-admin-key"}
@@ -49,9 +49,6 @@ def client(monkeypatch):
     fake_answer.calls.clear()
     monkeypatch.setattr(main, "ask_sentinel", fake_answer)
     monkeypatch.setattr(main, "stream_sentinel", fake_stream)
-    monkeypatch.setattr(main, "reformulate_question", lambda question, history: question)
-    monkeypatch.setattr(main.verified, "find_match", lambda question: None)
-    monkeypatch.setattr(main, "refresh_keyword_index", lambda: None)
     with TestClient(main.app) as test_client:
         yield test_client
 
@@ -109,14 +106,15 @@ def test_warm_up_starts_without_an_index(monkeypatch):
 
 @pytest.mark.parametrize(
     "method,path",
-    [("get", "/"), ("post", "/query"), ("post", "/search"), ("post", "/sessions"), ("get", "/documents")],
+    [("get", "/"), ("post", "/query"), ("post", "/query/stream"), ("post", "/search"), ("post", "/sessions"),
+     ("get", "/sessions")],
 )
 def test_every_route_but_health_rejects_missing_key(client, method, path):
     assert getattr(client, method)(path).status_code == 401
 
 
 def test_wrong_key_is_rejected(client):
-    assert client.get("/documents", headers={"X-API-Key": "nope"}).status_code == 401
+    assert client.get("/sessions", headers={"X-API-Key": "nope"}).status_code == 401
 
 
 def test_query_returns_cited_answer_without_session(client):
@@ -189,235 +187,10 @@ def test_stream_emits_sse_events_and_persists_the_turn(client):
     assert len(client.get(f"/sessions/{session_id}", headers=ADMIN).json()["messages"]) == 2
 
 
-def test_stats_report_logged_queries_and_feedback(client):
-    session_id = new_session(client)
-    client.post("/query", json={"question": "how are cache keys built?", "session_id": session_id}, headers=ADMIN)
-    client.post("/query", json={"question": "and where is it used?"}, headers=ADMIN)
-    message_id = client.get(f"/sessions/{session_id}", headers=ADMIN).json()["messages"][-1]["id"]
-    client.post(f"/messages/{message_id}/feedback", json={"rating": 1}, headers=ADMIN)
-
-    stats = client.get("/admin/stats", headers=ADMIN).json()
-
-    assert stats["queries"] >= 2
-    assert 5 <= stats["avg_retrieval_ms"] <= 12 and 6 <= stats["avg_generation_ms"] <= 34
-    assert stats["p95_total_ms"] >= 11
-    assert stats["feedback_up"] >= 1 and stats["feedback_positive_ratio"] is not None
-    assert stats["queries_per_day"][0]["queries"] >= 2
-
-
-def test_stats_are_admin_only(client):
-    created = client.post("/admin/keys", json={"label": "user"}, headers=ADMIN).json()
-
-    assert client.get("/admin/stats", headers={"X-API-Key": created["key"]}).status_code == 401
-    assert client.get("/admin/stats").status_code == 401
-
-
-def test_api_keys_can_be_created_used_and_revoked(client):
-    created = client.post("/admin/keys", json={"label": "ci"}, headers=ADMIN).json()
-    user_headers = {"X-API-Key": created["key"]}
-
-    assert client.post("/sessions", headers=user_headers).status_code == 201
-    assert client.post("/admin/keys", json={}, headers=user_headers).status_code == 401
-
-    assert client.delete(f"/admin/keys/{created['id']}", headers=ADMIN).status_code == 200
-    assert client.post("/sessions", headers=user_headers).status_code == 401
-    assert all("key" not in item for item in client.get("/admin/keys", headers=ADMIN).json())
-
-
-def test_upload_rejects_unsupported_types_and_queues_supported_ones(client, monkeypatch):
-    queued = []
-    monkeypatch.setattr(main, "ingest_upload", lambda job_id, name, data: queued.append((job_id, name, len(data))))
-
-    bad = client.post("/documents/upload", files={"file": ("virus.exe", b"MZ")}, headers=ADMIN)
-    good = client.post("/documents/upload", files={"file": ("notes.md", b"# Notes\nhello")}, headers=ADMIN)
-
-    assert bad.status_code == 415
-    assert good.status_code == 202
-    job_id = good.json()["job_id"]
-    assert queued == [(job_id, "notes.md", 13)]
-
-    job = client.get(f"/jobs/{job_id}", headers=ADMIN).json()
-    assert job["status"] == "queued" and job["filename"] == "notes.md"
-    assert client.get("/jobs/unknown", headers=ADMIN).status_code == 404
-
-
-def test_upload_strips_directory_components_from_filename(client, monkeypatch):
-    monkeypatch.setattr(main, "ingest_upload", lambda *args: None)
-
-    response = client.post("/documents/upload", files={"file": ("..\\..\\etc\\guide.md", b"# hi")}, headers=ADMIN)
-
-    assert response.json()["filename"] == "guide.md"
-
-
-def test_documents_list_and_delete(client, monkeypatch):
-    store.upsert_document("doc-1", "uploads/a.md", "upload", "markdown", "hash-a", 3)
-
-    listing = client.get("/documents?limit=10", headers=ADMIN).json()
-    assert any(item["id"] == "doc-1" and item["chunk_count"] == 3 for item in listing["items"])
-
-    monkeypatch.setattr(main, "delete_indexed_document", lambda document_id: document_id == "doc-1")
-    assert client.delete("/documents/doc-1", headers=ADMIN).json() == {"id": "doc-1", "deleted": True}
-    assert client.delete("/documents/nope", headers=ADMIN).status_code == 404
-
-
-def test_sync_is_admin_only_and_records_a_run(client, monkeypatch):
-    def fake_job(run_id, pull):
-        store.finish_sync_run(run_id, {"scanned": 3, "added": 1, "changed": 0, "removed": 0, "unchanged": 2,
-                                       "errors": []}, None)
-
-    monkeypatch.setattr(main, "run_sync_job", fake_job)
-    created = client.post("/admin/keys", json={"label": "user"}, headers=ADMIN).json()
-
-    assert client.post("/admin/sync", headers={"X-API-Key": created["key"]}).status_code == 401
-    started = client.post("/admin/sync", headers=ADMIN)
-    runs = client.get("/admin/sync", headers=ADMIN).json()
-
-    assert started.status_code == 202
-    assert runs[0]["id"] == started.json()["run_id"]
-    assert runs[0]["status"] == "done" and runs[0]["added"] == 1 and runs[0]["errors"] == []
-
-
-def test_sync_refuses_to_start_twice(client, monkeypatch):
-    monkeypatch.setattr(main, "sync_running", lambda: True)
-
-    assert client.post("/admin/sync", headers=ADMIN).status_code == 409
-
-
-def test_documents_can_be_filtered_by_source(client):
-    store.upsert_document("corpus-1", "superset/app.py", "code", "python", "h1", 4)
-    store.upsert_document("upload-9", "uploads/runbook.md", "upload", "markdown", "h2", 1)
-
-    uploads = client.get("/documents?source=upload", headers=ADMIN).json()["items"]
-    corpus = client.get("/documents?source=corpus", headers=ADMIN).json()["items"]
-
-    assert all(item["source_type"] == "upload" for item in uploads)
-    assert any(item["path"] == "superset/app.py" for item in corpus)
-    assert all(item["source_type"] != "upload" for item in corpus)
-
-
-def test_dashboard_reports_service_usage_evals_and_plan(client, monkeypatch, tmp_path):
-    from backend.app import dashboard
-
-    results = tmp_path / "results"
-    results.mkdir()
-    (results / "20261018T120000Z_baseline.json").write_text(
-        json.dumps({"config": {"mode": "hybrid"}, "summary": {"overall": {
-            "n": 40, "hit@1": 0.4, "hit@5": 0.675, "hit@10": 0.725, "mrr": 0.559}}}), encoding="utf-8")
-    (results / "20261018T130000Z_qwen7b.json").write_text(
-        json.dumps({"config": {"model": "Qwen/Qwen2.5-7B-Instruct"}, "summary": {
-            "answerable_n": 40, "cites_a_source": 0.975, "cites_expected_file_when_retrieved": 0.846,
-            "correctly_abstained_on_unanswerable": 0.875, "flagged_needs_review": 0.025, "avg_seconds": 16.5}}),
-        encoding="utf-8")
-    monkeypatch.setattr(dashboard, "RESULTS_DIR", results)
-    monkeypatch.setattr(dashboard, "index_chunk_count", lambda: 146435)
-    client.post("/query", json={"question": "where is the cache key built?"}, headers=ADMIN)
-
-    body = client.get("/admin/dashboard", headers=ADMIN).json()
-
-    assert body["service"]["chunks_in_index"] == 146435
-    assert body["usage"]["queries"] >= 1
-    assert body["recent_queries"][0]["question"] == "where is the cache key built?"
-    assert body["retrieval_runs"][0]["hit_at_5"] == 0.675
-    assert body["answer_runs"][0]["cites_a_source"] == 0.975
-    assert any(p["phase"] == "Phase 1" and p["state"] == "done" for p in body["plan"])
-
-
-def test_dashboard_is_admin_only(client):
-    user = {"X-API-Key": client.post("/admin/keys", json={"label": "u"}, headers=ADMIN).json()["key"]}
-
-    assert client.get("/admin/dashboard").status_code == 401
-    assert client.get("/admin/dashboard", headers=user).status_code == 401
-    assert client.get("/admin/session", headers=user).status_code == 401
-    assert client.get("/admin/session", headers=ADMIN).json() == {"admin": True}
-
-
-def test_phase_status_text_maps_to_a_state():
-    from backend.app.dashboard import phase_state
-
-    assert phase_state("done") == "done"
-    assert phase_state("done, with one gap") == "partial"
-    assert phase_state("partly done") == "partial"
-    assert phase_state("next") == "todo"
-
-
-MATCH = verified.VerifiedMatch(
-    id=7, question="How does Superset configure its caches?", answer="CacheManager sets them up [S1].",
-    sources=SOURCES, similarity=0.97, reviewed_at="2026-10-19T10:00:00+00:00",
-)
-
-
-def test_a_verified_match_is_answered_from_the_database(client, monkeypatch):
-    monkeypatch.setattr(main.verified, "find_match", lambda question: MATCH)
-
-    body = client.post("/query", json={"question": "How are Superset caches configured?"}, headers=ADMIN).json()
-
-    assert body["answer"] == "CacheManager sets them up [S1]."
-    assert body["model"] == "verified-answer" and body["generation_ms"] == 0
-    assert body["verified"]["id"] == 7 and body["verified"]["matched_question"] == MATCH.question
-    assert fake_answer.calls == []
-
-
-def test_filters_skip_the_verified_database(client, monkeypatch):
-    monkeypatch.setattr(main.verified, "find_match", lambda question: MATCH)
-
-    body = client.post("/query", json={"question": "How are caches configured?", "language": "python"},
-                       headers=ADMIN).json()
-
-    assert body["verified"] is None and len(fake_answer.calls) == 1
-
-
-def test_a_verified_match_streams_as_one_answer(client, monkeypatch):
-    monkeypatch.setattr(main.verified, "find_match", lambda question: MATCH)
-    session_id = new_session(client)
-
-    text = client.post("/query/stream", json={"question": "How are caches configured?", "session_id": session_id},
-                       headers=ADMIN).text
-    events = [block.split("\n") for block in text.strip().split("\n\n")]
-
-    assert [e[0].removeprefix("event: ") for e in events] == ["sources", "token", "done"]
-    done = json.loads(events[-1][1].removeprefix("data: "))
-    assert done["verified"]["id"] == 7 and done["message_id"]
-
-
-def test_verified_answer_admin_flow(client):
-    user = {"X-API-Key": client.post("/admin/keys", json={"label": "u"}, headers=ADMIN).json()["key"]}
-    assert client.get("/admin/verified", headers=user).status_code == 401
-
-    queued = client.post("/admin/verified/drafts", json={"questions": ["Where is the cache key built?"]}, headers=ADMIN)
-    listing = client.get("/admin/verified?status=pending", headers=ADMIN).json()
-    item = next(i for i in listing["items"] if i["question"] == "Where is the cache key built?")
-
-    assert queued.status_code == 202 and item["origin"] == "generated" and listing["counts"]["pending"] >= 1
-    uncited = {"answer": "No citation at all."}
-    rejected = client.post(f"/admin/verified/{item['id']}/approve", json=uncited, headers=ADMIN)
-    approved = client.post(f"/admin/verified/{item['id']}/approve", json={}, headers=ADMIN)
-
-    assert rejected.status_code == 422
-    assert approved.status_code == 200 and approved.json()["status"] == "approved"
-    assert client.post(f"/admin/verified/{item['id']}/reject", headers=ADMIN).json()["status"] == "rejected"
-    assert client.delete(f"/admin/verified/{item['id']}", headers=ADMIN).json()["deleted"] is True
-    assert client.delete(f"/admin/verified/{item['id']}", headers=ADMIN).status_code == 404
-
-
-def test_a_chat_answer_can_be_promoted_once(client):
-    session_id = new_session(client)
-    message_id = client.post("/query", json={"question": "How are cache keys made?", "session_id": session_id},
-                             headers=ADMIN).json()["message_id"]
-
-    first = client.post(f"/admin/verified/from-message/{message_id}", headers=ADMIN)
-    second = client.post(f"/admin/verified/from-message/{message_id}", headers=ADMIN)
-
-    assert first.status_code == 201 and second.status_code == 409
-    assert client.post("/admin/verified/from-message/999999", headers=ADMIN).status_code == 404
-
-
-def test_seed_questions_exclude_ones_already_in_the_review_queue(client, monkeypatch, tmp_path):
-    seeds = tmp_path / "seeds.json"
-    seeds.write_text(json.dumps(["Seed question one?", "Seed question two?"]), encoding="utf-8")
-    monkeypatch.setattr(main, "SEED_QUESTIONS_PATH", seeds)
-    store.create_verified_answer("Seed question one?", "a [S1]", [], "generated")
-
-    assert client.get("/admin/verified/seeds", headers=ADMIN).json() == ["Seed question two?"]
+def test_removed_admin_and_upload_routes_are_gone(client):
+    for method, path in [("get", "/admin/dashboard"), ("get", "/admin/stats"), ("post", "/admin/keys"),
+                         ("post", "/documents/upload"), ("get", "/documents")]:
+        assert getattr(client, method)(path, headers=ADMIN).status_code == 404
 
 
 def test_instruction_override_is_blocked_before_any_model_call(client):

@@ -138,18 +138,6 @@ def get_keyword_index() -> KeywordIndex:
     return _keyword_index
 
 
-def refresh_keyword_index() -> None:
-    # Build the replacement first and swap it in, so queries keep using the old index meanwhile.
-    global _keyword_index
-    fresh = build_keyword_index()
-    with _keyword_lock:
-        _keyword_index = fresh
-
-
-def keyword_index_size() -> int | None:
-    return len(_keyword_index.ids) if _keyword_index is not None else None
-
-
 def passes_filters(metadata: dict, language: str | None, path_prefix: str | None) -> bool:
     if language and metadata.get("language") != language:
         return False

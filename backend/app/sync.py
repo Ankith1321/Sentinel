@@ -2,29 +2,22 @@ import argparse
 import logging
 import subprocess
 import sys
-import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from backend.app import store, verified
+from backend.app import store
 from backend.app.db import init_db
-from backend.app.documents import replace_source_chunks
-from ingestion.chunker import chunk_record
+from ingestion.chunker import ChunkRecord, chunk_record
 from ingestion.config import SUPERSET_REPO
 from ingestion.file_scanner import scan_source_files
 from ingestion.loader import load_file
-from ingestion.retriever import get_collection, refresh_keyword_index
+from ingestion.retriever import get_collection, get_model
 
 GIT_TIMEOUT_SECONDS = 600
+EMBED_BATCH_SIZE = 64
 
 logger = logging.getLogger(__name__)
-
-_sync_lock = threading.Lock()
-
-
-class SyncInProgress(RuntimeError):
-    pass
 
 
 @dataclass
@@ -38,20 +31,11 @@ class SyncReport:
     unchanged: int = 0
     chunks_written: int = 0
     chunks_deleted: int = 0
-    verified_marked_stale: int = 0
     seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
 
-    @property
-    def touched(self) -> bool:
-        return bool(self.added or self.changed or self.removed)
-
     def to_dict(self) -> dict:
         return asdict(self)
-
-
-def sync_running() -> bool:
-    return _sync_lock.locked()
 
 
 def git_head(repo: Path) -> str | None:
@@ -71,7 +55,46 @@ def git_pull(repo: Path) -> None:
     )
 
 
-def index_changed_files(root: Path, manifest: dict, report: SyncReport, touched: set[str]) -> set[str]:
+def embed_and_upsert(chunks: list[ChunkRecord]) -> None:
+    collection = get_collection()
+    model = get_model()
+
+    for start in range(0, len(chunks), EMBED_BATCH_SIZE):
+        batch = chunks[start:start + EMBED_BATCH_SIZE]
+        texts = [c.content for c in batch]
+        embeddings = model.encode(texts, batch_size=EMBED_BATCH_SIZE, normalize_embeddings=True).tolist()
+
+        collection.upsert(
+            ids=[c.chunk_id for c in batch],
+            documents=texts,
+            embeddings=embeddings,
+            metadatas=[
+                {
+                    "source_id": c.source_id,
+                    "source_type": c.source_type,
+                    "path": c.path,
+                    "language": c.language,
+                    "title": c.title or "",
+                    "chunk_index": c.chunk_index,
+                }
+                for c in batch
+            ],
+        )
+
+
+def replace_source_chunks(source_id: str, chunks: list[ChunkRecord]) -> tuple[int, int]:
+    # Upsert first, then delete what the new version no longer produces, so a search never
+    # sees the file missing and a shrunken file leaves no stale chunks behind.
+    if chunks:
+        embed_and_upsert(chunks)
+    keep = {c.chunk_id for c in chunks}
+    stale = [i for i in get_collection().get(where={"source_id": source_id}, include=[])["ids"] if i not in keep]
+    if stale:
+        get_collection().delete(ids=stale)
+    return len(chunks), len(stale)
+
+
+def index_changed_files(root: Path, manifest: dict, report: SyncReport) -> set[str]:
     seen: set[str] = set()
 
     for path in scan_source_files(root):
@@ -96,7 +119,6 @@ def index_changed_files(root: Path, manifest: dict, report: SyncReport, touched:
             )
             report.chunks_written += written
             report.chunks_deleted += deleted
-            touched.add(relative)
             if known is None:
                 report.added += 1
             else:
@@ -108,7 +130,7 @@ def index_changed_files(root: Path, manifest: dict, report: SyncReport, touched:
     return seen
 
 
-def remove_missing_files(manifest: dict, seen: set[str], report: SyncReport, touched: set[str]) -> None:
+def remove_missing_files(manifest: dict, seen: set[str], report: SyncReport) -> None:
     for relative, row in manifest.items():
         if relative in seen:
             continue
@@ -118,65 +140,41 @@ def remove_missing_files(manifest: dict, seen: set[str], report: SyncReport, tou
         store.delete_document(row["id"])
         report.chunks_deleted += len(stale)
         report.removed += 1
-        touched.add(relative)
 
 
-def sync_corpus(root: Path = SUPERSET_REPO, pull: bool = False, refresh_keywords: bool = True) -> SyncReport:
-    if not _sync_lock.acquire(blocking=False):
-        raise SyncInProgress("A sync is already running")
-
+def sync_corpus(root: Path = SUPERSET_REPO, pull: bool = False) -> SyncReport:
     started = time.perf_counter()
     report = SyncReport()
-    try:
-        report.commit_before = git_head(root)
-        if pull:
-            try:
-                git_pull(root)
-            except (subprocess.SubprocessError, OSError) as error:
-                report.errors.append(f"git pull failed, indexing the current checkout instead: {error}")
-        report.commit_after = git_head(root)
 
-        manifest = store.corpus_documents()
-        touched: set[str] = set()
-        seen = index_changed_files(root, manifest, report, touched)
-        remove_missing_files(manifest, seen, report, touched)
-        report.verified_marked_stale = verified.mark_stale(touched)
+    report.commit_before = git_head(root)
+    if pull:
+        try:
+            git_pull(root)
+        except (subprocess.SubprocessError, OSError) as error:
+            report.errors.append(f"git pull failed, indexing the current checkout instead: {error}")
+    report.commit_after = git_head(root)
 
-        if report.touched and refresh_keywords:
-            refresh_keyword_index()
-        return report
-    finally:
-        report.seconds = round(time.perf_counter() - started, 1)
-        _sync_lock.release()
+    manifest = store.corpus_documents()
+    seen = index_changed_files(root, manifest, report)
+    remove_missing_files(manifest, seen, report)
 
-
-def run_sync_job(run_id: int, pull: bool, refresh_keywords: bool = True) -> None:
-    try:
-        report = sync_corpus(pull=pull, refresh_keywords=refresh_keywords)
-    except Exception as error:
-        logger.exception("sync run %d failed", run_id)
-        store.finish_sync_run(run_id, None, str(error))
-        return
-
-    store.finish_sync_run(run_id, report.to_dict(), None)
-    logger.info("sync run %d: %s", run_id, report.to_dict())
+    report.seconds = round(time.perf_counter() - started, 1)
+    return report
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Bring the index up to date with the corpus. Do not run while the API is serving; "
-        "use POST /admin/sync instead, so only one process writes to the index."
+        description="Bring the index up to date with the corpus. Stop the API first: only one process may "
+        "write to the index, and a running API keeps its keyword index in memory until it restarts."
     )
     parser.add_argument("--pull", action="store_true", help="git pull --ff-only the corpus first")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     init_db()
-    run_id = store.start_sync_run(args.pull)
-    # A standalone process exits right after, so rebuilding the in-memory keyword index would be wasted.
-    run_sync_job(run_id, args.pull, refresh_keywords=False)
-    row = store.recent_sync_runs(1)[0]
-    return 0 if row["status"] == "done" else 1
+    report = sync_corpus(pull=args.pull)
+    logger.info("sync finished: %s", report.to_dict())
+    return 1 if report.errors else 0
 
 
 if __name__ == "__main__":
