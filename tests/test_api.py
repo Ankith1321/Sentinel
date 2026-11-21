@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import main, store, verified
+from ingestion.retriever import IndexUnavailable
 
 ADMIN = {"X-API-Key": "test-admin-key"}
 
@@ -61,8 +62,49 @@ def new_session(client) -> str:
     return response.json()["session_id"]
 
 
-def test_health_is_public(client):
-    assert client.get("/health").json() == {"status": "ok", "service": "sentinel-api"}
+def test_health_is_public_and_reports_a_missing_index(client):
+    assert client.get("/health").json() == {"status": "ok", "service": "sentinel-api", "index_ready": False}
+
+
+def test_search_without_an_index_answers_503(client):
+    response = client.post("/search", json={"question": "where is the cache"}, headers=ADMIN)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": main.INDEX_UNAVAILABLE_DETAIL}
+
+
+def test_query_without_an_index_answers_503(client, monkeypatch):
+    def no_index(*args, **kwargs):
+        raise IndexUnavailable("missing")
+
+    monkeypatch.setattr(main, "ask_sentinel", no_index)
+    response = client.post("/query", json={"question": "where is the cache"}, headers=ADMIN)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": main.INDEX_UNAVAILABLE_DETAIL}
+
+
+def test_stream_without_an_index_sends_an_error_event(client, monkeypatch):
+    def no_index(*args, **kwargs):
+        raise IndexUnavailable("missing")
+        yield
+
+    monkeypatch.setattr(main, "stream_sentinel", no_index)
+    response = client.post("/query/stream", json={"question": "where is the cache"}, headers=ADMIN)
+
+    assert "event: error" in response.text
+    assert main.INDEX_UNAVAILABLE_DETAIL in response.text
+
+
+def test_warm_up_starts_without_an_index(monkeypatch):
+    def must_not_build():
+        raise AssertionError("the keyword index must not be built without an index")
+
+    monkeypatch.setattr(main, "get_model", lambda: None)
+    monkeypatch.setattr(main, "get_provider", lambda: None)
+    monkeypatch.setattr(main, "get_keyword_index", must_not_build)
+
+    main.warm_up()
 
 
 @pytest.mark.parametrize(

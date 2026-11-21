@@ -7,9 +7,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, UploadFile, status
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.app import store, verified
@@ -22,7 +22,15 @@ from backend.app.sync import run_sync_job, sync_running
 from ingestion.config import CORS_ORIGINS, LOG_LEVEL, MAX_UPLOAD_BYTES, PROJECT_ROOT, RETRIEVAL_MODE
 from ingestion.llm import get_provider
 from ingestion.rag_service import ask_sentinel, reformulate_question, stream_sentinel
-from ingestion.retriever import get_keyword_index, get_model, get_reranker, refresh_keyword_index, retrieve
+from ingestion.retriever import (
+    IndexUnavailable,
+    get_keyword_index,
+    get_model,
+    get_reranker,
+    index_ready,
+    refresh_keyword_index,
+    retrieve,
+)
 
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 for noisy in ("httpx", "httpcore", "huggingface_hub", "sentence_transformers", "urllib3", "filelock"):
@@ -37,6 +45,7 @@ DocumentSource = Literal["upload", "corpus"]
 VerifiedStatus = Literal["pending", "approved", "stale", "rejected"]
 Question = Annotated[str, Field(min_length=3, max_length=2000)]
 VERIFIED_MODEL_LABEL = "verified-answer"
+INDEX_UNAVAILABLE_DETAIL = "The search index is not available on this server."
 SEED_QUESTIONS_PATH = PROJECT_ROOT / "eval" / "verified_seed_questions.json"
 
 
@@ -98,6 +107,7 @@ class SearchResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     service: str
+    index_ready: bool
 
 
 class RootResponse(BaseModel):
@@ -308,7 +318,9 @@ class KeyItem(BaseModel):
 
 def warm_up() -> None:
     get_model()
-    if RETRIEVAL_MODE != "vector":
+    if not index_ready():
+        logger.warning("no search index found; search routes will answer 503 until one is built or mounted")
+    elif RETRIEVAL_MODE != "vector":
         get_keyword_index()
     if RETRIEVAL_MODE == "hybrid_rerank":
         get_reranker()
@@ -332,6 +344,12 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+@app.exception_handler(IndexUnavailable)
+async def index_unavailable_handler(_: Request, error: IndexUnavailable) -> JSONResponse:
+    logger.warning("search index unavailable: %s", error)
+    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": INDEX_UNAVAILABLE_DETAIL})
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -411,7 +429,7 @@ def sse(event: str, data: object) -> str:
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    return HealthResponse(status="ok", service="sentinel-api")
+    return HealthResponse(status="ok", service="sentinel-api", index_ready=index_ready())
 
 
 @app.get("/", response_model=RootResponse, dependencies=protected)
@@ -476,6 +494,8 @@ def query_stream(request: QueryRequest) -> StreamingResponse:
                     data["message_id"] = message_id
                     data["session_id"] = request.session_id
                 yield sse(name, data)
+        except IndexUnavailable:
+            yield sse("error", {"detail": INDEX_UNAVAILABLE_DETAIL})
         except Exception:
             logger.exception("streaming query failed")
             yield sse("error", {"detail": "The answer could not be generated. Please try again."})

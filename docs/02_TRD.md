@@ -59,6 +59,8 @@ All figures were measured on the dev machine (RTX 4060 Laptop, 8 GB, CUDA PyTorc
 
 - **Two runtimes must keep working:** the CUDA dev machine and CPU-only containers. Test every model-loading change on both. The container is CPU-only, so its realistic answer path is Claude; the local 3B on CPU is too slow for interactive use.
 - **Single writer to the index.** ChromaDB and the in-memory keyword index are owned by one process. Run the sync through `POST /admin/sync` while the API is up, and the CLI only while it is down.
+- **The index location is configurable** with `SENTINEL_CHROMA_PATH` (default `data/indexes/chroma`), so a container can mount a prebuilt index. The test suite points it at an empty temporary directory, so tests never read or write the real index.
+- **Starting without an index is allowed.** The API still starts, `/health` reports `"index_ready": false`, `/query`, `/query/stream` and `/search` answer 503 ("The search index is not available on this server"), and the stream sends an `error` event. It is a deployment-safety behaviour, not a product feature: an image with no index cannot answer questions.
 - **ChromaDB has no horizontal scaling.** Fine for one machine; migrate when that stops being true.
 
 ## 7. Open technical risks

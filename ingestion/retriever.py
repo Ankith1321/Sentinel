@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Literal
 
 import chromadb
+from chromadb.errors import NotFoundError
 from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
@@ -62,10 +63,25 @@ def get_reranker() -> CrossEncoder:
     return CrossEncoder(RERANK_MODEL)
 
 
+class IndexUnavailable(RuntimeError):
+    pass
+
+
 @lru_cache(maxsize=1)
 def get_collection():
     client = chromadb.PersistentClient(path=CHROMA_PATH)
-    return client.get_collection(name=COLLECTION_NAME)
+    try:
+        return client.get_collection(name=COLLECTION_NAME)
+    except NotFoundError as error:
+        raise IndexUnavailable(f"collection {COLLECTION_NAME!r} not found at {CHROMA_PATH}") from error
+
+
+def index_ready() -> bool:
+    try:
+        get_collection()
+    except IndexUnavailable:
+        return False
+    return True
 
 
 def tokenize_for_keywords(text: str) -> list[str]:
@@ -264,6 +280,7 @@ def retrieve(
     mode = mode or RETRIEVAL_MODE
     pool = max(MIN_CANDIDATE_POOL, top_k * 4)
     started = time.perf_counter()
+    get_collection()  # raises IndexUnavailable before any model is loaded
 
     if mode == "vector":
         results = vector_search(query, pool, language, path_prefix)[:top_k]
