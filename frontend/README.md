@@ -1,6 +1,6 @@
 # Sentinel — frontend
 
-Next.js 16 app for Sentinel: chat, documents, and the admin dashboard. See the [root README](../README.md) and [`docs/03_APP_FLOW.md`](../docs/03_APP_FLOW.md).
+Next.js 16 chat page for Sentinel. See the [root README](../README.md).
 
 ## Dev
 
@@ -15,14 +15,12 @@ Open http://localhost:3000. Use `localhost`, not `127.0.0.1`: the dev server blo
 
 ```
 SENTINEL_API_URL=http://127.0.0.1:8000
-SENTINEL_API_KEY=<a regular API key, not the admin key>
+SENTINEL_API_KEY=<the same value as SENTINEL_API_KEY in the root .env>
 ```
 
 ## How requests flow
 
-- The browser calls only `/api/*`. `src/app/api/[...path]/route.ts` forwards an allow-list of routes to the API with the regular key.
-- `/api/admin/*` is forwarded only with the admin's key from the `sentinel_admin` HttpOnly cookie, which `src/app/api/admin-session/route.ts` sets after checking the key against the API.
-- The Dashboard link appears only for a signed-in admin; `/dashboard` shows the sign-in form to everyone else.
+The browser calls only `/api/*`. `src/app/api/[...path]/route.ts` forwards an allow-list of routes (`query`, `search`, `sessions`, `messages`) to the API and adds the key on the server, so the key never reaches the browser.
 
 ## Checks
 
