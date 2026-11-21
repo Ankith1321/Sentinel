@@ -82,3 +82,11 @@ jobs:
           tags: ${{ steps.names.outputs.frontend }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Space image (build only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/space/Dockerfile
+          push: false
+          cache-from: type=gha,scope=space
+          cache-to: type=gha,mode=max,scope=space

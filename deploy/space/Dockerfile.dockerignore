@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+.claude
+.env
+data
+workspace
+docs
+tests
+eval/results
+**/__pycache__
+frontend/node_modules
+frontend/.next

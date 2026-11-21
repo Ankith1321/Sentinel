@@ -101,6 +101,17 @@ python -m pytest tests -q && ruff check backend ingestion eval tests
 
 CI (`.github/workflows/ci.yml`) runs lint and tests, the frontend lint, type-check and build, and builds both Docker images.
 
+## Deploy to a free Hugging Face Space
+
+The Space runs one container (the Next.js UI on port 7860 and the API behind it) on the free CPU tier. With no GPU and no API key it uses the retrieval-only mode, so it costs nothing.
+
+```bash
+python -m ingestion.fetch_index --publish <your-user>/sentinel-index   # once; stop the API first; needs `hf auth login`
+bash deploy/space/push.sh                                              # pushes the current commit to the `hf` remote
+```
+
+The container downloads the index from that dataset on start (set `SENTINEL_INDEX_REPO` in `deploy/space/Dockerfile` to your dataset). Expect a few minutes of warm-up on a cold start; a free Space sleeps after 48 hours idle and wakes on the next visit. The image is built in CI on every push, but it has not been started anywhere yet.
+
 ## Limits, stated plainly
 
 - Retrieval misses 13 of 40 questions in the top 5, mostly broad "how does X work" questions where related layers outrank the implementing file.
