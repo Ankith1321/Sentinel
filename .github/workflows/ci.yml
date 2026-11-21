@@ -59,13 +59,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Lowercase image names
+        id: names
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "backend=ghcr.io/${owner}/sentinel-backend:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "frontend=ghcr.io/${owner}/sentinel-frontend:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
       - name: Backend image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/backend.Dockerfile
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository_owner }}/sentinel-backend:${{ github.sha }}
+          tags: ${{ steps.names.outputs.backend }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Frontend image
@@ -73,6 +79,6 @@ jobs:
         with:
           context: frontend
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository_owner }}/sentinel-frontend:${{ github.sha }}
+          tags: ${{ steps.names.outputs.frontend }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
