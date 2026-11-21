@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import threading
@@ -6,10 +7,11 @@ from functools import lru_cache
 from typing import Protocol
 
 import anthropic
+import httpx
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
-from ingestion.config import ANTHROPIC_MODEL, LLM_PROVIDER, LOCAL_LLM_MODEL
+from ingestion.config import ANTHROPIC_MODEL, LLM_PROVIDER, LOCAL_LLM_MODEL, OPENAI_BASE_URL, OPENAI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,47 @@ class AnthropicProvider:
                 yield REFUSAL_NOTICE
 
 
+class OpenAICompatibleProvider:
+    name = "openai"
+
+    def __init__(self, model: str, base_url: str, api_key: str, transport: httpx.BaseTransport | None = None) -> None:
+        self.model = model
+        self.client = httpx.Client(
+            base_url=base_url.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=60.0,
+            transport=transport,
+        )
+
+    def payload(self, system: str, messages: list[dict], max_tokens: int, stream: bool) -> dict:
+        return {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "temperature": 0,
+            "stream": stream,
+            "messages": [{"role": "system", "content": system}, *messages],
+        }
+
+    def complete(self, system: str, messages: list[dict], max_tokens: int) -> str:
+        response = self.client.post("/chat/completions", json=self.payload(system, messages, max_tokens, False))
+        response.raise_for_status()
+        return (response.json()["choices"][0]["message"]["content"] or "").strip()
+
+    def stream(self, system: str, messages: list[dict], max_tokens: int) -> Iterator[str]:
+        body = self.payload(system, messages, max_tokens, True)
+        with self.client.stream("POST", "/chat/completions", json=body) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line.removeprefix("data: ")
+                if data == "[DONE]":
+                    break
+                delta = json.loads(data)["choices"][0]["delta"].get("content")
+                if delta:
+                    yield delta
+
+
 class LocalProvider:
     name = "local"
 
@@ -101,19 +144,35 @@ class LocalProvider:
             worker.join()
 
 
+def openai_compatible_configured() -> bool:
+    return bool(OPENAI_BASE_URL and OPENAI_MODEL and os.getenv("SENTINEL_OPENAI_API_KEY"))
+
+
 def resolve_provider_name() -> str:
-    if LLM_PROVIDER in {"anthropic", "local"}:
+    if LLM_PROVIDER in {"anthropic", "openai", "local", "none"}:
         return LLM_PROVIDER
 
-    return "anthropic" if os.getenv("ANTHROPIC_API_KEY") else "local"
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic"
+
+    if openai_compatible_configured():
+        return "openai"
+
+    return "local" if torch.cuda.is_available() else "none"
 
 
 @lru_cache(maxsize=1)
-def get_provider() -> LLMProvider:
+def get_provider() -> LLMProvider | None:
     name = resolve_provider_name()
     logger.info("llm provider: %s", name)
 
     if name == "anthropic":
         return AnthropicProvider(ANTHROPIC_MODEL)
 
-    return LocalProvider(LOCAL_LLM_MODEL)
+    if name == "openai":
+        return OpenAICompatibleProvider(OPENAI_MODEL, OPENAI_BASE_URL, os.environ["SENTINEL_OPENAI_API_KEY"])
+
+    if name == "local":
+        return LocalProvider(LOCAL_LLM_MODEL)
+
+    return None

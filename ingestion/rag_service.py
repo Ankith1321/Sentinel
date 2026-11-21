@@ -51,6 +51,7 @@ Output only the rewritten query on one line, with no quotes and no explanation."
 
 REFORMULATE_MAX_TOKENS = 80
 SNIPPET_CHARS = 500
+RETRIEVAL_ONLY_MODEL = "retrieval-only"
 
 
 def fit_contexts_to_budget(contexts: list[dict], budget: int) -> list[dict]:
@@ -68,14 +69,15 @@ def fit_contexts_to_budget(contexts: list[dict], budget: int) -> list[dict]:
 
 
 def reformulate_question(question: str, history: list[dict]) -> str:
-    if not history:
+    provider = get_provider()
+    if not history or provider is None:
         return question
 
     transcript = "\n".join(f"{turn['role']}: {turn['content'][:600]}" for turn in history[-6:])
     prompt = f"Conversation so far:\n{transcript}\n\nFollow-up question: {question}\n\nStandalone query:"
 
     try:
-        rewritten = get_provider().complete(
+        rewritten = provider.complete(
             REFORMULATE_SYSTEM_PROMPT,
             [{"role": "user", "content": prompt}],
             REFORMULATE_MAX_TOKENS,
@@ -169,6 +171,14 @@ def log_query(question: str, prepared: dict, generation_ms: float, model: str) -
     )
 
 
+def retrieval_only_answer(sources: list[dict]) -> str:
+    listed = "\n".join(f"- `{source['path']}` [{source['id']}]" for source in sources)
+    return (
+        "No language model is available on this server, so these are the closest passages in the codebase "
+        "instead of a written answer. Open the sources below to read them.\n\n" + listed
+    )
+
+
 def ask_sentinel(
     question: str,
     top_k: int = 5,
@@ -182,10 +192,14 @@ def ask_sentinel(
     provider = get_provider()
 
     started = time.perf_counter()
-    answer, _ = redact(provider.complete(SYSTEM_PROMPTS[PROMPT_VARIANT], prepared["messages"], MAX_ANSWER_TOKENS))
+    if provider is None:
+        answer, model = retrieval_only_answer(prepared["sources"]), RETRIEVAL_ONLY_MODEL
+    else:
+        completion = provider.complete(SYSTEM_PROMPTS[PROMPT_VARIANT], prepared["messages"], MAX_ANSWER_TOKENS)
+        answer, model = redact(completion)[0], provider.model
     generation_ms = (time.perf_counter() - started) * 1000
 
-    log_query(question, prepared, generation_ms, provider.model)
+    log_query(question, prepared, generation_ms, model)
 
     return {
         "question": question,
@@ -193,7 +207,7 @@ def ask_sentinel(
         "answer": answer,
         "sources": prepared["sources"],
         "top_k": top_k,
-        "model": provider.model,
+        "model": model,
         "retrieval_ms": round(prepared["retrieval_ms"]),
         "generation_ms": round(generation_ms),
         "retrieved_ids": [c["id"] for c in prepared["contexts"]],
@@ -216,20 +230,26 @@ def stream_sentinel(
     yield "sources", {"sources": prepared["sources"], "standalone_question": prepared["standalone_question"]}
 
     started = time.perf_counter()
-    parts: list[str] = []
-    for token in provider.stream(SYSTEM_PROMPTS[PROMPT_VARIANT], prepared["messages"], MAX_ANSWER_TOKENS):
-        parts.append(token)
-        yield "token", token
+    if provider is None:
+        model = RETRIEVAL_ONLY_MODEL
+        parts = [retrieval_only_answer(prepared["sources"])]
+        yield "token", parts[0]
+    else:
+        model = provider.model
+        parts = []
+        for token in provider.stream(SYSTEM_PROMPTS[PROMPT_VARIANT], prepared["messages"], MAX_ANSWER_TOKENS):
+            parts.append(token)
+            yield "token", token
 
     generation_ms = (time.perf_counter() - started) * 1000
-    log_query(question, prepared, generation_ms, provider.model)
+    log_query(question, prepared, generation_ms, model)
 
     answer, _ = redact("".join(parts).strip())
     yield "done", {
         "answer": answer,
         "checks": check_answer(answer, prepared["contexts"]).to_dict(),
         "sources": prepared["sources"],
-        "model": provider.model,
+        "model": model,
         "retrieval_ms": round(prepared["retrieval_ms"]),
         "generation_ms": round(generation_ms),
         "retrieved_ids": [c["id"] for c in prepared["contexts"]],

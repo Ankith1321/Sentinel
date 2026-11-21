@@ -42,6 +42,9 @@ CORS_ORIGINS = [
 ]
 
 LLM_PROVIDER = os.getenv("SENTINEL_LLM_PROVIDER", "auto")
+# Any OpenAI-compatible chat endpoint (OpenRouter, Groq, Gemini's compatibility endpoint, ...).
+OPENAI_BASE_URL = os.getenv("SENTINEL_OPENAI_BASE_URL", "")
+OPENAI_MODEL = os.getenv("SENTINEL_OPENAI_MODEL", "")
 ANTHROPIC_MODEL = os.getenv("SENTINEL_ANTHROPIC_MODEL", "claude-haiku-5-5")
 # With the strict prompt the 3B matched the 7B on the answer eval at half the latency, so the 3B is the
 # project model (owner decision, 2026-10-19). Its licence (Qwen Research) allows non-commercial use

@@ -1,6 +1,8 @@
+import json
 import re
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from ingestion import llm, rag_service
@@ -140,17 +142,25 @@ def test_anthropic_provider_joins_text_blocks_and_reports_refusals(monkeypatch):
     assert calls[0]["model"] == "claude-haiku-5-5" and calls[0]["system"] == "system" and calls[0]["max_tokens"] == 100
 
 
-def test_provider_choice_follows_the_api_key(monkeypatch):
+def test_provider_choice_follows_the_key_and_the_hardware(monkeypatch):
     monkeypatch.setattr(llm, "LLM_PROVIDER", "auto")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("SENTINEL_OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(llm.torch.cuda, "is_available", lambda: False)
+    assert llm.resolve_provider_name() == "none"
+
+    monkeypatch.setattr(llm.torch.cuda, "is_available", lambda: True)
+    assert llm.resolve_provider_name() == "local"
+
+    monkeypatch.setattr(llm, "OPENAI_BASE_URL", "https://example.test/v1")
+    monkeypatch.setattr(llm, "OPENAI_MODEL", "some-free-model")
+    monkeypatch.setenv("SENTINEL_OPENAI_API_KEY", "free-key")
+    assert llm.resolve_provider_name() == "openai"
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     assert llm.resolve_provider_name() == "anthropic"
 
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
-    assert llm.resolve_provider_name() == "local"
-
     monkeypatch.setattr(llm, "LLM_PROVIDER", "local")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     assert llm.resolve_provider_name() == "local"
 
 
@@ -173,3 +183,71 @@ def test_secret_shaped_text_is_redacted_from_the_answer(monkeypatch):
     result = rag_service.ask_sentinel("what is the key?")
 
     assert "sk-ant" not in result["answer"] and "[REDACTED API KEY]" in result["answer"]
+
+
+@pytest.fixture()
+def no_model(monkeypatch):
+    monkeypatch.setattr(rag_service, "get_provider", lambda: None)
+    passages = [
+        context("a", text="File: superset/utils/cache.py\ndef generate_cache_key(): pass"),
+        context("b", text="File: docs/x.md\n# Caching", path="docs/x.md"),
+    ]
+    monkeypatch.setattr(rag_service, "retrieve", lambda *a, **k: passages)
+
+
+def test_without_a_model_the_answer_lists_the_closest_passages(no_model):
+    result = rag_service.ask_sentinel("where is the cache key built?", top_k=2)
+
+    assert result["model"] == rag_service.RETRIEVAL_ONLY_MODEL and result["generation_ms"] == 0
+    assert "`superset/utils/cache.py` [S1]" in result["answer"] and "`docs/x.md` [S2]" in result["answer"]
+    assert [s["id"] for s in result["sources"]] == ["S1", "S2"]
+    assert result["checks"]["needs_review"] is False
+
+
+def test_without_a_model_the_stream_still_sends_sources_then_the_answer(no_model):
+    events = list(rag_service.stream_sentinel("where is the cache key built?", top_k=2))
+
+    assert [name for name, _ in events] == ["sources", "token", "done"]
+    assert events[-1][1]["model"] == rag_service.RETRIEVAL_ONLY_MODEL
+    assert "[S1]" in events[-1][1]["answer"]
+
+
+def test_without_a_model_a_follow_up_is_not_rewritten(monkeypatch):
+    monkeypatch.setattr(rag_service, "get_provider", lambda: None)
+
+    assert rag_service.reformulate_question("and where is it used?", [{"role": "user", "content": "x"}]) == (
+        "and where is it used?"
+    )
+
+
+def openai_provider(handler):
+    transport = httpx.MockTransport(handler)
+    return llm.OpenAICompatibleProvider("some-free-model", "https://example.test/v1/", "free-key", transport)
+
+
+def test_openai_compatible_provider_sends_the_prompt_and_reads_the_reply():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"], seen["auth"] = str(request.url), request.headers["authorization"]
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": " Answer [S1]. "}}]})
+
+    reply = openai_provider(handler).complete("system text", [{"role": "user", "content": "hi"}], 100)
+
+    assert reply == "Answer [S1]."
+    assert seen["url"] == "https://example.test/v1/chat/completions" and seen["auth"] == "Bearer free-key"
+    assert seen["body"]["model"] == "some-free-model" and seen["body"]["max_tokens"] == 100
+    assert seen["body"]["messages"][0] == {"role": "system", "content": "system text"}
+
+
+def test_openai_compatible_provider_streams_the_deltas_until_done():
+    sse = (
+        'data: {"choices": [{"delta": {"role": "assistant"}}]}\n\n'
+        'data: {"choices": [{"delta": {"content": "Cache "}}]}\n\n'
+        'data: {"choices": [{"delta": {"content": "keys [S1]."}}]}\n\n'
+        "data: [DONE]\n\n"
+    )
+    provider = openai_provider(lambda request: httpx.Response(200, text=sse))
+
+    assert "".join(provider.stream("system", [{"role": "user", "content": "hi"}], 100)) == "Cache keys [S1]."
