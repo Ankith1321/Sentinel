@@ -50,6 +50,7 @@ def client(monkeypatch):
     monkeypatch.setattr(main, "stream_sentinel", fake_stream)
     monkeypatch.setattr(main, "reformulate_question", lambda question, history: question)
     monkeypatch.setattr(main.verified, "find_match", lambda question: None)
+    monkeypatch.setattr(main, "refresh_keyword_index", lambda: None)
     with TestClient(main.app) as test_client:
         yield test_client
 

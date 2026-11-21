@@ -12,7 +12,7 @@ SUPERSET_REPO = PROJECT_ROOT / "workspace" / "superset"
 DEFAULT_COLLECTION = "superset_codebase"
 COLLECTION_NAME = os.getenv("SENTINEL_COLLECTION", DEFAULT_COLLECTION)
 
-CHROMA_PATH = str(PROJECT_ROOT / "data" / "indexes" / "chroma")
+CHROMA_PATH = os.getenv("SENTINEL_CHROMA_PATH", str(PROJECT_ROOT / "data" / "indexes" / "chroma"))
 DB_PATH = Path(os.getenv("SENTINEL_DB_PATH", PROJECT_ROOT / "data" / "sentinel.db"))
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 CHUNKS_PATH = PROCESSED_DIR / (
