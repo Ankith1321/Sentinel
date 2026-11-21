@@ -9,6 +9,7 @@ from eval.run_eval import RESULTS_DIR, load_qa_set
 from ingestion import rag_service
 from ingestion.answer_checks import check_answer
 from ingestion.config import LOCAL_LLM_MODEL, LOCAL_LLM_QUANT, MAX_ANSWER_TOKENS, PROJECT_ROOT
+from ingestion.guardrails import sentence_support
 from ingestion.llm import get_provider
 
 UNANSWERABLE_PATH = PROJECT_ROOT / "eval" / "unanswerable.json"
@@ -39,6 +40,7 @@ def evaluate_answerable(qa_set: list[dict], variant: str) -> list[dict]:
         expected = set(item["expected_paths"])
         retrieved = {c["metadata"]["path"] for c in contexts}
         cited_paths = {contexts[n - 1]["metadata"]["path"] for n in checks.cited_sources}
+        support = sentence_support(answer, [c["content"] for c in contexts])
 
         rows.append(
             {
@@ -53,6 +55,9 @@ def evaluate_answerable(qa_set: list[dict], variant: str) -> list[dict]:
                 "unsupported_terms": checks.unsupported_terms,
                 "abstained": checks.abstained,
                 "needs_review": checks.needs_review,
+                "sentences_checked": support.checked,
+                "sentences_supported": support.checked - len(support.unsupported),
+                "unsupported_sentences": support.unsupported,
             }
         )
         logger.info("%s hit=%s cited=%s unsupported=%d %.1fs", item["id"], rows[-1]["retrieval_hit"],
@@ -76,6 +81,7 @@ def evaluate_unanswerable(questions: list[dict], variant: str) -> list[dict]:
 
 def summarise(answerable: list[dict], unanswerable: list[dict]) -> dict:
     hits = [r for r in answerable if r["retrieval_hit"]]
+    sentences = sum(r["sentences_checked"] for r in answerable)
 
     return {
         "answerable_n": len(answerable),
@@ -88,6 +94,8 @@ def summarise(answerable: list[dict], unanswerable: list[dict]) -> dict:
         ),
         "wrongly_abstained_when_retrieved": rate(sum(r["abstained"] for r in hits), len(hits)),
         "flagged_needs_review": rate(sum(r["needs_review"] for r in answerable), len(answerable)),
+        "sentences_checked": sentences,
+        "sentences_supported_by_passages": rate(sum(r["sentences_supported"] for r in answerable), sentences),
         "avg_seconds": round(sum(r["seconds"] for r in answerable) / max(1, len(answerable)), 2),
         "unanswerable_n": len(unanswerable),
         "correctly_abstained_on_unanswerable": rate(sum(r["abstained"] for r in unanswerable), len(unanswerable)),

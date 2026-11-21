@@ -50,16 +50,19 @@ History on the earlier, smaller corpus (88,144 chunks): the original line-window
 
 | Model | Cites a source | Cites the right file* | Names something not in the sources | Refuses off-topic | Seconds per answer |
 |---|---|---|---|---|---|
-| **Qwen2.5-3B-Instruct, fp16 (current)** | **100%** | **85%** | 5% | **7 of 8** | ~8 |
+| **Qwen2.5-3B-Instruct, fp16 (current; 2026-11-21, guardrails on, 146,435 chunks)** | **100%** | **81.5%** (22 of 27) | 2.5% | **7 of 8** | ~11.6 |
+| Qwen2.5-3B-Instruct, fp16 (2026-10-18, earlier index) | 100% | 85% (22 of 26) | 5% | 7 of 8 | ~8 |
 | Qwen2.5-7B-Instruct, 4-bit | 97.5% | 85% | 2.5% | 7 of 8 | ~16.5 |
 | Qwen2.5-1.5B-Instruct (original) | 5% | 0% | 10% | 4 of 8 | ~9 |
 
-*Of the answers where retrieval had found the expected file.
+*Of the answers where retrieval had found the expected file. The two 3B rows cite the right file for the same 22 questions; the newer index simply retrieves one more. Single runs on a laptop GPU: the speed difference is within what a laptop shows from run to run and has no known cause. One question is 2.5 points.
+
+Groundedness, measured on the 2026-11-21 run: **76.2%** of 126 answer sentences have at least half of their content words in the retrieved passages (`sentence_support`, a lexical check). Paraphrases and generic summaries such as "this command sets up the necessary properties" count as unsupported, so this is a floor for true groundedness, not an estimate of it. A real figure needs a human or model-graded review of a sample.
 
 ### 5.3 Targets
 
 - **Retrieval hit@5:** at least 70%. Current: 67.5%.
-- **Groundedness:** at least 90% of answer sentences supported by their cited source. Not measured yet beyond the automatic citation and unsupported-name checks above.
+- **Groundedness:** at least 90% of answer sentences supported by their cited source. Not yet verified: the automatic lexical check gives 76.2% (see 5.2), which cannot tell a paraphrase from an invention. The next step is a hand review of about 30 answers.
 - **p95 end-to-end latency for `/query`:** under 10 s on the API path; the local path is exempt. Local 3B answers take roughly 8-15 s; verified answers return in well under a second.
 - **Uncited factual claims:** zero. The strict prompt plus the answer checker flag any answer without a valid `[S#]`, and flagged answers show a "check this against the sources" note.
 - **Verified-answer matching:** zero false matches (100% precision). Current: threshold 0.91, precision 100%, recall 45% on the 40-pair set. A missed match costs nothing, since the question goes through normal search.
