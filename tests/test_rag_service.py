@@ -152,3 +152,24 @@ def test_provider_choice_follows_the_api_key(monkeypatch):
     monkeypatch.setattr(llm, "LLM_PROVIDER", "local")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     assert llm.resolve_provider_name() == "local"
+
+
+def test_secrets_in_passages_never_reach_the_model_or_the_source_previews(monkeypatch, provider):
+    leaky = context("a", text='SECRET_KEY = "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET"\ndef load(): pass')
+    monkeypatch.setattr(rag_service, "retrieve", lambda *a, **k: [leaky])
+
+    result = rag_service.ask_sentinel("how is the secret key configured?")
+    prompt = provider.calls[0]["messages"][-1]["content"]
+
+    assert "CHANGE_ME" not in prompt and 'SECRET_KEY = "[REDACTED]"' in prompt
+    assert "CHANGE_ME" not in result["sources"][0]["preview"]
+
+
+def test_secret_shaped_text_is_redacted_from_the_answer(monkeypatch):
+    fake = FakeProvider(reply="The key is " + "sk-ant-" + "x" * 30 + " [S1].")
+    monkeypatch.setattr(rag_service, "get_provider", lambda: fake)
+    monkeypatch.setattr(rag_service, "retrieve", lambda *a, **k: [context("a")])
+
+    result = rag_service.ask_sentinel("what is the key?")
+
+    assert "sk-ant" not in result["answer"] and "[REDACTED API KEY]" in result["answer"]

@@ -5,10 +5,6 @@ BLOCKED_ANSWER = (
     "This question asks Sentinel to ignore or reveal its instructions, so it was not answered. "
     "Ask about the codebase instead."
 )
-GATED_ANSWER = (
-    "The retrieved passages do not contain the answer: nothing in the indexed codebase is close enough to "
-    "this question, so Sentinel did not generate one."
-)
 
 INJECTION_PATTERNS = [
     re.compile(p, re.IGNORECASE)

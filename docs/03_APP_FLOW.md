@@ -44,6 +44,7 @@ flowchart TD
 - **Sources:** each answer carries its own source cards. A verified answer shows the sources approved with it.
 - **Errors:** a failed request renders as a red message bubble inline in the thread. Stop aborts the stream and keeps what already arrived.
 - **Filters:** a question sent with a language, path prefix or retrieval mode skips the verified-answer database, because the stored answer may not respect the filter.
+- **Blocked questions:** a question that tries to override Sentinel's instructions is refused before the verified-answer lookup and before any model call. The refusal appears as a normal answer with no sources.
 
 ## 3. Uploading a document
 

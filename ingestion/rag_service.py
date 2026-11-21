@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from ingestion.answer_checks import check_answer
 from ingestion.chunker import count_tokens
 from ingestion.config import CONTEXT_TOKEN_BUDGET, MAX_ANSWER_TOKENS, PROMPT_VARIANT
+from ingestion.guardrails import redact
 from ingestion.llm import get_provider
 from ingestion.retriever import retrieve
 
@@ -121,6 +122,11 @@ def build_sources(contexts: list[dict]) -> list[dict]:
     ]
 
 
+def redact_context(context: dict) -> dict:
+    content, count = redact(context["content"])
+    return {**context, "content": content} if count else context
+
+
 def prepare(
     question: str,
     top_k: int,
@@ -135,7 +141,7 @@ def prepare(
 
     started = time.perf_counter()
     retrieved = retrieve(standalone, top_k=top_k, mode=mode, language=language, path_prefix=path_prefix)
-    contexts = fit_contexts_to_budget(retrieved, CONTEXT_TOKEN_BUDGET)
+    contexts = [redact_context(c) for c in fit_contexts_to_budget(retrieved, CONTEXT_TOKEN_BUDGET)]
     retrieval_ms = (time.perf_counter() - started) * 1000
 
     return {
@@ -176,7 +182,7 @@ def ask_sentinel(
     provider = get_provider()
 
     started = time.perf_counter()
-    answer = provider.complete(SYSTEM_PROMPTS[PROMPT_VARIANT], prepared["messages"], MAX_ANSWER_TOKENS)
+    answer, _ = redact(provider.complete(SYSTEM_PROMPTS[PROMPT_VARIANT], prepared["messages"], MAX_ANSWER_TOKENS))
     generation_ms = (time.perf_counter() - started) * 1000
 
     log_query(question, prepared, generation_ms, provider.model)
@@ -218,7 +224,7 @@ def stream_sentinel(
     generation_ms = (time.perf_counter() - started) * 1000
     log_query(question, prepared, generation_ms, provider.model)
 
-    answer = "".join(parts).strip()
+    answer, _ = redact("".join(parts).strip())
     yield "done", {
         "answer": answer,
         "checks": check_answer(answer, prepared["contexts"]).to_dict(),

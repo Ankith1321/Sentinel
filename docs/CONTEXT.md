@@ -182,6 +182,7 @@ These apply to every code change in every session. Amendments are dated and give
 
 ### 8.6 LLM Rules
 
+- **Questions that try to override the rules are refused before generation, and secret-shaped text never reaches the model or the sources shown to users** (added 2026-11-21; see `ingestion/guardrails.py`).
 - **The LLM never answers from outside knowledge.** The prompt forbids it, and the system is grounded-only. No model is trained to answer from memory.
 - **Every factual claim cites a source using `[S1]`, `[S2]`, and so on.** The answer checker flags answers without a valid citation or with names absent from the passages.
 - **Max new tokens are bounded:** 500.

@@ -54,6 +54,11 @@ All figures were measured on the dev machine (RTX 4060 Laptop, 8 GB, CUDA PyTorc
 - Admin sessions in the browser: an HttpOnly, SameSite=Strict cookie (Secure in production), 8 hours. The proxy never forwards `/admin/*` with the server key.
 - Input validation: Pydantic length and range limits on every request field. Uploads are capped at 10 MB, extension allow-listed, and stripped of path components.
 - Verified answers are served only after an admin approves them, and approval requires at least one valid `[S#]` citation.
+- Guardrails (`ingestion/guardrails.py`):
+  - A question that tries to override the instructions ("ignore your rules", "reveal your system prompt", "answer without sources") gets a fixed refusal before any model call: no sources, model label `guardrail`, stored and logged like any other turn. 16 attack and 16 look-alike codebase questions in `eval/guardrail_cases.json` are all classified correctly.
+  - Secret-shaped text (private keys, AWS and API keys, `password = "..."` assignments) is redacted from the passages before the model sees them, from the source previews, and from the final answer. Streamed tokens are not redacted one by one; because the passages are already clean, only text the model invents could leak.
+  - Sentence-level groundedness (`sentence_support`) is measured by `eval.run_answer_eval` and reported there. It does not flag or block answers, because no threshold has been tuned yet.
+  - Not built: a gate that refuses to generate when retrieval is weak.
 
 ## 6. Constraints
 

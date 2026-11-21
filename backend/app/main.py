@@ -20,6 +20,7 @@ from backend.app.documents import SUPPORTED_UPLOAD_SUFFIXES, delete_indexed_docu
 from backend.app.snapshot import export_snapshot, import_if_empty
 from backend.app.sync import run_sync_job, sync_running
 from ingestion.config import CORS_ORIGINS, LOG_LEVEL, MAX_UPLOAD_BYTES, PROJECT_ROOT, RETRIEVAL_MODE
+from ingestion.guardrails import BLOCKED_ANSWER, injection_reason
 from ingestion.llm import get_provider
 from ingestion.rag_service import ask_sentinel, reformulate_question, stream_sentinel
 from ingestion.retriever import (
@@ -45,6 +46,7 @@ DocumentSource = Literal["upload", "corpus"]
 VerifiedStatus = Literal["pending", "approved", "stale", "rejected"]
 Question = Annotated[str, Field(min_length=3, max_length=2000)]
 VERIFIED_MODEL_LABEL = "verified-answer"
+GUARDRAIL_MODEL_LABEL = "guardrail"
 INDEX_UNAVAILABLE_DETAIL = "The search index is not available on this server."
 SEED_QUESTIONS_PATH = PROJECT_ROOT / "eval" / "verified_seed_questions.json"
 
@@ -423,6 +425,32 @@ def verified_payload(request: QueryRequest, standalone: str, match: verified.Ver
     }
 
 
+def guarded_payload(request: QueryRequest) -> dict | None:
+    if injection_reason(request.question) is None:
+        return None
+
+    logger.warning("blocked a question that tries to override the instructions")
+    return {
+        "question": request.question,
+        "standalone_question": request.question,
+        "answer": BLOCKED_ANSWER,
+        "sources": [],
+        "top_k": request.top_k,
+        "model": GUARDRAIL_MODEL_LABEL,
+        "retrieval_ms": 0,
+        "generation_ms": 0,
+        "retrieved_ids": [],
+    }
+
+
+def canned_events(payload: dict) -> list[tuple[str, object]]:
+    return [
+        ("sources", {"sources": payload["sources"], "standalone_question": payload["standalone_question"]}),
+        ("token", payload["answer"]),
+        ("done", payload),
+    ]
+
+
 def sse(event: str, data: object) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
@@ -441,20 +469,22 @@ def root() -> RootResponse:
 def query(request: QueryRequest) -> QueryResponse:
     history = load_history(request.session_id)
     started = time.perf_counter()
-    standalone, match = resolve_question(request, history)
+    result = guarded_payload(request)
 
-    if match:
-        result = verified_payload(request, standalone, match, started)
-    else:
-        result = ask_sentinel(
-            question=request.question,
-            top_k=request.top_k,
-            history=history,
-            mode=request.mode,
-            language=request.language,
-            path_prefix=request.path_prefix,
-            standalone_question=standalone,
-        )
+    if result is None:
+        standalone, match = resolve_question(request, history)
+        if match:
+            result = verified_payload(request, standalone, match, started)
+        else:
+            result = ask_sentinel(
+                question=request.question,
+                top_k=request.top_k,
+                history=history,
+                mode=request.mode,
+                language=request.language,
+                path_prefix=request.path_prefix,
+                standalone_question=standalone,
+            )
 
     message_id = save_turn(request.session_id, request.question, result)
     record_query(request.session_id, request.question, result, message_id)
@@ -468,14 +498,15 @@ def query_stream(request: QueryRequest) -> StreamingResponse:
     def events() -> Iterator[str]:
         try:
             started = time.perf_counter()
-            standalone, match = resolve_question(request, history)
-            if match:
-                payload = verified_payload(request, standalone, match, started)
-                stream = iter([
-                    ("sources", {"sources": payload["sources"], "standalone_question": standalone}),
-                    ("token", payload["answer"]),
-                    ("done", payload),
-                ])
+            payload = guarded_payload(request)
+
+            if payload is None:
+                standalone, match = resolve_question(request, history)
+                if match:
+                    payload = verified_payload(request, standalone, match, started)
+
+            if payload is not None:
+                stream = iter(canned_events(payload))
             else:
                 stream = stream_sentinel(
                     question=request.question,
