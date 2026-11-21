@@ -66,7 +66,7 @@
 
 ## Phase 10 — Deploy and CI/CD
 
-**Status: partly done.** The GitHub Actions workflow, both Dockerfiles and the compose file are written but have not been run: Docker Desktop was not running and the branch has not been pushed. Nothing is deployed to Azure yet; that needs a subscription, a registry and secrets from the owner. In a CPU-only container the answer path should be Claude.
+**Status: partly done.** CI runs on GitHub and is green on `ankith` (2026-11-21, commit `51a604b`): backend lint and 125 tests, frontend lint, type-check and build, and both Docker images build and push to GHCR. The first run failed twice for reasons only a runner shows: one test read the real local index (fixed by pointing tests at an empty temporary index), and the image tag used an uppercase owner name. The containers have never been started, and nothing is deployed: the image contains no index (mount one with `SENTINEL_CHROMA_PATH`), and Azure needs a subscription, a registry and secrets from the owner. In a CPU-only container the answer path should be Claude.
 
 **Definition of done:** both containers on Azure Container Apps behind the API key, CI building and pushing images, and the README linking the live demo.
 

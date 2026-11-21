@@ -13,7 +13,7 @@ The 6 planning documents are the hard rules for product, technical, flow, design
 - Backend schema: @docs/05_BACKEND_SCHEMA.md
 - Implementation plan (phase status and definitions of done): @docs/06_IMPLEMENTATION_PLAN.md
 
-Known state (2026-10-19): Phases 1-9 and 11 are done (Phase 5 has one gap: the Claude path has never run against the real API). Phase 10 (CI, containers, Azure deploy) is written but not run. The project model is Qwen2.5-3B-Instruct, whose licence is non-commercial only. Every quality claim must come from the eval suites in `eval/`.
+Known state (2026-10-19): Phases 1-9 and 11 are done (Phase 5 has one gap: the Claude path has never run against the real API). Phase 10: CI is green on GitHub (backend, frontend, both images build); the containers have never been started and nothing is deployed to Azure. The project model is Qwen2.5-3B-Instruct, whose licence is non-commercial only. Every quality claim must come from the eval suites in `eval/`.
 
 ## Hard rule — no unsolicited .md files
 

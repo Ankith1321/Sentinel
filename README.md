@@ -4,13 +4,13 @@ An internal engineering knowledge assistant. Ask natural-language questions abou
 
 ## Status
 
-Phases 1-9 and 11 of the [implementation plan](docs/06_IMPLEMENTATION_PLAN.md) are done. Deployment (Phase 10) is written but not run.
+Phases 1-9 and 11 of the [implementation plan](docs/06_IMPLEMENTATION_PLAN.md) are done. CI passes on GitHub; deployment (Phase 10) is not done yet.
 
 | Measured on the fixed eval sets | Result |
 |---|---|
 | Right file in the top 5 search results (40 questions) | 67.5% (was 40% at the start) |
 | "Where is X defined" questions answered with the defining file first | 100% |
-| Local answers that cite a source / cite the right file | 100% / 85% |
+| Local answers that cite a source / cite the right file | 100% / 81.5% |
 | Off-topic questions correctly refused | 7 of 8 |
 | Verified-answer false matches (40 paraphrase/near-miss pairs) | 0 |
 
